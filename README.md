@@ -1,6 +1,18 @@
 # Sphere-Light-Render-ComfyUI
 Widget to tell Flux 2 Klein 9B where the sun light comes from. To be used with Sun_direction_Lora for Flux2Klein
 
+## Install
+
+Clone into your `ComfyUI/custom_nodes/`:
+
+```bash
+cd ComfyUI/custom_nodes/
+git clone https://github.com/eric-venti-seeds/Sphere-Light-Render-ComfyUI.git
+```
+
+Restart ComfyUI. No additional Python dependencies for the core node.
+
+
 Download the Lora from here:
 
 https://huggingface.co/eric-venti-seeds/Sun-Direction-Lora-Flux2Klein9B
