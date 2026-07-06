@@ -29,9 +29,9 @@ The Node renders a 1024 x 1024 image as reference for the LoRA to understand whe
 ## Time of day
 
 Set `sun_mode` to `date/time` to position the light from a real sun position.
-Enter a `location` ("City, State" for the US, or "City, Country" elsewhere — e.g.
-`Austin, TX`, `London, UK`, `Tokyo, Japan`), the date/time, and the compass
-`heading` the camera faces. A status line on the node shows what was resolved
+Start typing a city in `location` and pick from the dropdown (e.g. `Austin, TX`,
+`London, UK`, `Tokyo, Japan`); then set the date/time and the compass `heading`
+the camera faces. A status line on the node shows what was resolved
 (`☀ London, England`) or warns when the city isn't found, so you always know
 whether it matched. Timezone and daylight-saving are handled automatically.
 

@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { loadCities } from "./geo.js";
 import { computeSunAngles } from "./sun.js";
+import { createLocationSearch, formatLabel } from "./location_search.js";
 
 // Vendored locally (was cdnjs) so the node works offline / air-gapped and
 // isn't exposed to a third-party CDN being compromised. Resolved relative to
@@ -255,6 +256,7 @@ app.registerExtension({
       // context itself (browsers cap ~16), so many nodes don't exhaust them.
       this._slCtx?.renderer?.dispose();
       this._slCtx?.renderer?.forceContextLoss?.();
+      this._slSearch?.destroy?.();   // removes the body-attached suggestion menu
       this._slCtx    = null;
       this._slCanvas = null;
     };
@@ -265,16 +267,53 @@ app.registerExtension({
       app.graph.setDirtyCanvas(true, false);
     };
 
+    // Progressive enhancement: swap the plain location text field for a
+    // searchable city dropdown when the DOM-widget API is available; falls back
+    // silently to the text field otherwise. The search writes into the (hidden)
+    // serialized `location` widget, so the resolve pipeline is unchanged.
+    const setupLocationSearch = () => {
+      if (node._slSearch || typeof node.addDOMWidget !== "function") return;
+      const locW = node.widgets?.find((w) => w.name === "location");
+      if (!locW) return;
+      try {
+        const search = createLocationSearch({
+          getRecords: () => node._slCities || [],
+          initial:    String(locW.value ?? ""),
+          onSelect:   (rec) => { locW.value = formatLabel(rec); doRender(); },
+          onText:     (t)   => { locW.value = t; debounced(); },
+        });
+        node._slSearch = search;
+        const w = node.addDOMWidget("location_search", "location_search",
+                                    search.element, { serialize: false });
+        // Hide the plain (still-serialized) location widget; the search drives it.
+        locW.computeSize = () => [0, 0];
+        locW.draw = () => {};
+        locW.type = "hidden";
+        // Best-effort: place the search where 'location' was.
+        const ws = node.widgets;
+        const di = ws.indexOf(w), li = ws.indexOf(locW);
+        if (di > -1 && li > -1 && di !== li + 1) {
+          ws.splice(di, 1);
+          ws.splice(li + 1, 0, w);
+        }
+        app.graph.setDirtyCanvas(true, true);
+      } catch (e) {
+        console.warn("[SphereLight] location search unavailable, using text field:", e);
+        node._slSearch = null;
+      }
+    };
+
     const initW = Math.max(node.size?.[0] || 300, 280);
     const initSide = initW - 24;
 
     setTimeout(() => {
       hideB64Widget();
       hookSliders();
+      setupLocationSearch();
       doRender();
       node.setSize([initW, TOP_WIDGETS_H() + initSide + 16]);
     }, 100);
 
-    setTimeout(() => { hookSliders(); hideB64Widget(); }, 700);
+    setTimeout(() => { hookSliders(); hideB64Widget(); setupLocationSearch(); }, 700);
   },
 });

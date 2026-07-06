@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findCity, nearestCity } from "./geo.js";
+import { findCity, nearestCity, suggestCities } from "./geo.js";
 
 const FIX = [
   { city: "Austin", regionCode: "TX", region: "Texas", country: "US", countryName: "United States", lat: 30.27, lng: -97.74, tz: "America/Chicago", population: 961855 },
@@ -39,6 +39,20 @@ test("common country aliases resolve (UK, USA)", () => {
   assert.equal(findCity("London, UK", FIX).tz, "Europe/London");
   assert.equal(findCity("London, England", FIX).tz, "Europe/London");
   assert.equal(findCity("Austin, USA", FIX).regionCode, "TX"); // most populous Austin in US
+});
+
+test("suggestCities ranks matches and respects the limit", () => {
+  const s = suggestCities("aus", FIX);
+  assert.ok(s.length >= 2);
+  assert.equal(s[0].city, "Austin");                 // prefix match surfaces
+  assert.equal(s[0].regionCode, "TX");               // most populous Austin first
+  assert.equal(suggestCities("aus", FIX, 1).length, 1); // limit honored
+  assert.deepEqual(suggestCities("", FIX), []);      // empty query -> nothing
+});
+
+test("suggestCities filters by a typed qualifier", () => {
+  const s = suggestCities("austin, mn", FIX);
+  assert.equal(s[0].regionCode, "MN");
 });
 
 test("nearestCity returns the closest record", () => {
