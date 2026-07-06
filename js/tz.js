@@ -13,9 +13,13 @@ export function zoneOffsetMs(instant, timeZone) {
 }
 
 export function zonedWallTimeToUTC(year, month, day, hour, minute, timeZone) {
-  // Treat the wall time as if it were UTC, then subtract the zone's offset at
-  // that instant. One correction is exact outside the ~1h DST transition window.
+  // Treat the wall time as if it were UTC, then subtract the zone's offset.
+  // A second pass recomputes the offset at the first-pass instant so times in
+  // the multi-hour window around a DST transition resolve to the correct side.
+  // The only irreducible ambiguity is the ~1h nonexistent/repeated wall-clock
+  // hour at the transition itself.
   const guess = Date.UTC(year, month - 1, day, hour, minute, 0);
-  const offset = zoneOffsetMs(new Date(guess), timeZone);
-  return new Date(guess - offset);
+  let utc = guess - zoneOffsetMs(new Date(guess), timeZone);
+  utc = guess - zoneOffsetMs(new Date(utc), timeZone);
+  return new Date(utc);
 }
