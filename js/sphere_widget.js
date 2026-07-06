@@ -1,6 +1,9 @@
 import { app } from "../../scripts/app.js";
 
-const THREE_CDN = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+// Vendored locally (was cdnjs) so the node works offline / air-gapped and
+// isn't exposed to a third-party CDN being compromised. Resolved relative to
+// this module's own URL, so it loads wherever ComfyUI serves the extension.
+const THREE_CDN = new URL("./three.min.js", import.meta.url).href;
 
 function loadThree() {
   return new Promise((res, rej) => {
@@ -180,7 +183,10 @@ app.registerExtension({
     node.widgets.push(previewWidget);
 
     node.onRemoved = function() {
+      // dispose() frees GL resources; forceContextLoss() releases the WebGL
+      // context itself (browsers cap ~16), so many nodes don't exhaust them.
       this._slCtx?.renderer?.dispose();
+      this._slCtx?.renderer?.forceContextLoss?.();
       this._slCtx    = null;
       this._slCanvas = null;
     };
