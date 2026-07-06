@@ -97,16 +97,20 @@ app.registerExtension({
       const mode = node.widgets?.find((w) => w.name === "sun_mode")?.value;
       const intensity = getVal("intensity", 1.5);
       if (mode !== "date/time" || !node._slCities) {
+        node._slStatus = "";
         return { az: getVal("rotation", 0), el: getVal("elevation", 45), intensity };
       }
       const r = computeSunAngles({
         location: getStr("location", ""),
+        lat: getVal("latitude", 0), lng: getVal("longitude", 0),
         year: getVal("year", 2025), month: getVal("month", 6), day: getVal("day", 21),
         hour: getVal("hour", 12), minute: getVal("minute", 0), heading: getVal("heading", 0),
       }, node._slCities);
-      if (r.error) { console.warn("[SphereLight] location not found:", getStr("location", ""));
-        return { az: getVal("rotation", 0), el: getVal("elevation", 45), intensity }; }
-      if (r.belowHorizon) console.warn("[SphereLight] sun below horizon at this time");
+      node._slStatus = r.label || "";
+      if (r.error) {
+        // Couldn't resolve a location — keep the manual sliders driving the light.
+        return { az: getVal("rotation", 0), el: getVal("elevation", 45), intensity };
+      }
       return { az: r.rotation, el: r.elevation, intensity };
     };
 
@@ -145,7 +149,8 @@ app.registerExtension({
 
     const hookSliders = () => {
       ["rotation", "elevation", "intensity",
-       "sun_mode", "location", "year", "month", "day", "hour", "minute", "heading"
+       "sun_mode", "location", "latitude", "longitude",
+       "year", "month", "day", "hour", "minute", "heading"
       ].forEach(name => {
         const w = node.widgets?.find(w => w.name === name);
         if (!w || w._slHooked) return;
@@ -211,7 +216,38 @@ app.registerExtension({
       },
     };
 
+    // One-line status under the inputs: what the location resolved to, or why
+    // it didn't. Kept in sync by getAngles() via node._slStatus.
+    const statusWidget = {
+      name:      "_sun_status",
+      type:      "sun_status",
+      value:     null,
+      serialize: false,
+      options:   { serialize: false },
+
+      computeSize(nw) { return [nw, node._slStatus ? 18 : 0]; },
+
+      draw(ctx2d, node, widget_width, y) {
+        const s = node._slStatus;
+        if (!s) return;
+        ctx2d.save();
+        ctx2d.font = "12px sans-serif";
+        ctx2d.textAlign = "left";
+        ctx2d.textBaseline = "middle";
+        ctx2d.fillStyle = s[0] === "⚠" ? "#e0a848" : "#79c0ff";
+        let text = s;
+        const maxW = widget_width - 24;
+        while (text.length > 6 && ctx2d.measureText(text + "…").width > maxW) {
+          text = text.slice(0, -1);
+        }
+        if (text !== s) text += "…";
+        ctx2d.fillText(text, 12, y + 9);
+        ctx2d.restore();
+      },
+    };
+
     node.widgets = node.widgets || [];
+    node.widgets.push(statusWidget);
     node.widgets.push(previewWidget);
 
     node.onRemoved = function() {

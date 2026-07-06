@@ -48,3 +48,32 @@ test("manual lat/lng fallback when city not found", () => {
   assert.equal(r.error, undefined);
   assert.ok(r.elevation > 10);
 });
+
+test("city match returns a sun label with the city name", () => {
+  const r = computeSunAngles({ location: "Austin, TX", year: 2023, month: 6, day: 21, hour: 12, minute: 0 }, FIX);
+  assert.equal(r.source, "city");
+  assert.match(r.label, /Austin/);
+});
+
+test("coordinates used when no city; timezone borrowed from nearest city", () => {
+  const r = computeSunAngles(
+    { location: "", lat: 30.27, lng: -97.74, year: 2023, month: 6, day: 21, hour: 8, minute: 0, heading: 0 },
+    FIX
+  );
+  assert.equal(r.error, undefined);
+  assert.equal(r.source, "coords");
+  assert.equal(r.matched, null);
+  assert.ok(r.elevation > 10, `elevation ${r.elevation}`); // 8am Central -> sun is up
+  assert.match(r.label, /30\.27/);
+});
+
+test("unresolved location returns error with an explanatory label", () => {
+  const r = computeSunAngles({ location: "Nowhere, ZZ", year: 2023, month: 6, day: 21, hour: 8, minute: 0 }, FIX);
+  assert.equal(r.error, "city_not_found");
+  assert.match(r.label, /not found/);
+});
+
+test("(0,0) coordinates are treated as unset", () => {
+  const r = computeSunAngles({ location: "", lat: 0, lng: 0, year: 2023, month: 6, day: 21, hour: 8, minute: 0 }, FIX);
+  assert.equal(r.error, "city_not_found");
+});

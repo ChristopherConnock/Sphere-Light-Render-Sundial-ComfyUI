@@ -21,6 +21,8 @@ class SphereLightNode:
                 "intensity": ("FLOAT", {"default": 1.5,  "min": 0.2,  "max": 3.0, "step": 0.1, "display": "slider"}),
                 "sun_mode":  (["manual", "date/time"], {"default": "manual"}),
                 "location":  ("STRING", {"default": "Austin, TX", "multiline": False}),
+                "latitude":  ("FLOAT", {"default": 0.0, "min": -90.0,  "max": 90.0,  "step": 0.0001}),
+                "longitude": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.0001}),
                 "year":      ("INT", {"default": 2025, "min": 1, "max": 9999}),
                 "month":     ("INT", {"default": 6,  "min": 1,  "max": 12}),
                 "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
@@ -38,10 +40,11 @@ class SphereLightNode:
     OUTPUT_NODE = False
 
     def execute(self, rotation, elevation, intensity, sun_mode, location,
-                year, month, day, hour, minute, heading, render_b64):
-        # Positioning params (sun_mode..heading) are consumed client-side in
-        # js/sphere_widget.js; the server only needs render_b64. They appear
-        # here because ComfyUI passes every declared input.
+                latitude, longitude, year, month, day, hour, minute, heading,
+                render_b64):
+        # Positioning params (sun_mode..heading, latitude/longitude) are consumed
+        # client-side in js/sphere_widget.js; the server only needs render_b64.
+        # They appear here because ComfyUI passes every declared input.
         img = None
         if render_b64 and render_b64.startswith("data:image"):
             if len(render_b64) > MAX_B64_CHARS:
