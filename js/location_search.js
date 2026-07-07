@@ -1,4 +1,5 @@
 import { suggestCities } from "./geo.js";
+import { FIELD_BG, FIELD_TEXT, WIDGET_GAP, LABEL_STYLE } from "./widget_style.js";
 
 // A searchable location input: an <input> plus a dropdown of ranked city
 // suggestions. The dropdown is attached to <body> with fixed positioning so it
@@ -17,25 +18,36 @@ export function formatLabel(rec) {
   return `${rec.city}, ${rec.region || rec.countryName || rec.country}`;
 }
 
-export function createLocationSearch({ getRecords, initial = "", onSelect, onText } = {}) {
+export function createLocationSearch({ getRecords, initial = "", onSelect, onText, label } = {}) {
+  // A flex row: a fixed-width label column beside the input, so the input's left
+  // edge lands on the node's control column like the native widgets. (DOM widgets
+  // get no built-in label, and — in the v2 Vue node grid — span the label+control
+  // columns as one block, so we recreate the label column ourselves.)
   const container = document.createElement("div");
-  container.style.width = "100%";
+  Object.assign(container.style, {
+    boxSizing: "border-box", width: "100%", height: "100%",
+    display: "flex", alignItems: "center", gap: WIDGET_GAP,
+  });
+
+  let labelEl = null;
+  if (label) {
+    labelEl = document.createElement("span");
+    labelEl.textContent = label;
+    Object.assign(labelEl.style, LABEL_STYLE);
+    container.appendChild(labelEl);
+  }
 
   const input = document.createElement("input");
   input.type = "text";
   input.value = initial;
   input.placeholder = "type a city…";
   input.spellcheck = false;
-  // Match ComfyUI's native widgets: pull the theme's own input colors, use the
-  // standard 20px widget height and the inherited font so it lines up with the
-  // other inputs' light-grey pills instead of looking small/short.
+  // Match the native v2 widget: filled background token, no border, rounded-lg,
+  // widget foreground text. Falls back to classic CSS vars on the v1 renderer.
   Object.assign(input.style, {
-    width: "100%", boxSizing: "border-box", height: "20px", padding: "0 8px",
-    background: "var(--comfy-input-bg, #303030)",
-    color: "var(--input-text, #dddddd)",
-    border: "1px solid var(--border-color, #4e4e4e)",
-    borderRadius: "8px", fontFamily: "inherit", fontSize: "14px",
-    outline: "none",
+    flex: "1 1 auto", minWidth: "0", boxSizing: "border-box", padding: "7px 12px",
+    background: FIELD_BG, color: FIELD_TEXT, border: "none",
+    borderRadius: "8px", fontFamily: "inherit", fontSize: "12px", outline: "none",
   });
   container.appendChild(input);
 
@@ -130,6 +142,20 @@ export function createLocationSearch({ getRecords, initial = "", onSelect, onTex
     setText: (t) => { input.value = t ?? ""; },
     getText: () => input.value,
     reposition: position,
+    // Size the label column so the input's left edge lands exactly on the
+    // node's native control column. `targetLeft` is that column's viewport x,
+    // `scale` the canvas zoom. Two-pass: aim, measure the residual, correct.
+    matchLabel: ({ targetLeft, fontSize, scale = 1 } = {}) => {
+      if (!labelEl) return;
+      if (fontSize) labelEl.style.fontSize = fontSize;
+      container.style.gap = "0px";
+      if (targetLeft == null || !container.isConnected) return;
+      const contLeft = container.getBoundingClientRect().left;
+      const w = (targetLeft - contLeft) / scale;
+      labelEl.style.flex = `0 0 ${Math.max(w, 0)}px`;
+      const residual = (input.getBoundingClientRect().left - targetLeft) / scale;
+      labelEl.style.flex = `0 0 ${Math.max(w - residual, 0)}px`;
+    },
     destroy: () => { menu.remove(); },
   };
 }

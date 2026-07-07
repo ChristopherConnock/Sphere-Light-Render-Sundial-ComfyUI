@@ -1,3 +1,5 @@
+import { FIELD_BG, FIELD_TEXT, WIDGET_GAP, LABEL_STYLE } from "./widget_style.js";
+
 // Draggable compass dial for the `heading` input. `pointerToHeading` is pure
 // (no DOM) so it is unit-tested in Node; `createCompass` (Task 3) is the DOM
 // factory and is verified manually, like location_search.js.
@@ -13,21 +15,53 @@ export function pointerToHeading(cx, cy, x, y) {
   return (deg + 360) % 360;
 }
 
-// A small canvas compass the user drags. Writes `heading` degrees via onChange.
-// Colors are literal (canvas can't read CSS vars); N is amber, needle is the
-// same blue as the node's status accent.
-export function createCompass({ initial = 0, size = 72, onChange } = {}) {
+// A compass row: a left-hand label, a numeric degrees input, and a draggable
+// dial — all synced. Writes `heading` degrees via onChange. `theme` carries the
+// node's widget colors (from LiteGraph.WIDGET_*) so the input matches the native
+// widgets; the dial itself uses literal accent colors (N amber, needle blue).
+export function createCompass({ initial = 0, size = 64, onChange, label } = {}) {
   let heading = (((Number(initial) || 0) % 360) + 360) % 360;
+
+  // One-time: strip the number input's spin buttons so it reads like a pill.
+  if (typeof document !== "undefined" && !document.getElementById("sl-compass-style")) {
+    const st = document.createElement("style");
+    st.id = "sl-compass-style";
+    st.textContent =
+      ".sl-compass-num::-webkit-inner-spin-button,.sl-compass-num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}";
+    document.head.appendChild(st);
+  }
 
   const container = document.createElement("div");
   Object.assign(container.style, {
-    width: "100%", display: "flex", justifyContent: "center", padding: "2px 0",
+    boxSizing: "border-box", width: "100%", height: "100%",
+    display: "flex", alignItems: "center", gap: WIDGET_GAP,
   });
+
+  let labelEl = null;
+  if (label) {
+    labelEl = document.createElement("span");
+    labelEl.textContent = label;
+    Object.assign(labelEl.style, LABEL_STYLE);
+    container.appendChild(labelEl);
+  }
+
+  const num = document.createElement("input");
+  num.type = "number"; num.min = "0"; num.max = "360"; num.step = "1";
+  num.className = "sl-compass-num";
+  num.value = String(Math.round(heading));
+  Object.assign(num.style, {
+    flex: "0 0 auto", width: "52px", boxSizing: "border-box",
+    padding: "5px 6px", textAlign: "center",
+    background: FIELD_BG, color: FIELD_TEXT, border: "none",
+    borderRadius: "8px", fontFamily: "inherit", fontSize: "12px",
+    outline: "none", appearance: "textfield", MozAppearance: "textfield",
+  });
+  container.appendChild(num);
 
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
-  Object.assign(canvas.style, { cursor: "pointer", touchAction: "none" });
+  Object.assign(canvas.style, { flex: "0 0 auto", cursor: "pointer", touchAction: "none" });
   container.appendChild(canvas);
 
   const ctx = canvas.getContext("2d");
@@ -38,11 +72,11 @@ export function createCompass({ initial = 0, size = 72, onChange } = {}) {
 
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.strokeStyle = "#4e4e4e";
+    ctx.strokeStyle = "#5a5a5a";
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.font = "10px sans-serif";
+    ctx.font = "8px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const [ch, deg] of [["N", 0], ["E", 90], ["S", 180], ["W", 270]]) {
@@ -54,7 +88,7 @@ export function createCompass({ initial = 0, size = 72, onChange } = {}) {
     const a = heading * Math.PI / 180;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.sin(a) * (R - 4), cy - Math.cos(a) * (R - 4));
+    ctx.lineTo(cx + Math.sin(a) * (R - 3), cy - Math.cos(a) * (R - 3));
     ctx.strokeStyle = "#79c0ff";
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -63,15 +97,17 @@ export function createCompass({ initial = 0, size = 72, onChange } = {}) {
     ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
     ctx.fillStyle = "#79c0ff";
     ctx.fill();
-
-    ctx.fillStyle = "#c9d1d9";
-    ctx.font = "9px sans-serif";
-    ctx.fillText(`${Math.round(heading)}°`, cx, cy + R - 1);
   };
 
-  const set = (deg, fire) => {
+  const applyHeading = (deg) => {
     heading = (((deg % 360) + 360) % 360);
     draw();
+  };
+
+  // set() also rewrites the number field — used by the dial and external setValue.
+  const set = (deg, fire) => {
+    applyHeading(deg);
+    num.value = String(Math.round(heading));
     if (fire) onChange?.(heading);
   };
 
@@ -82,6 +118,14 @@ export function createCompass({ initial = 0, size = 72, onChange } = {}) {
     const deg = pointerToHeading(cx, cy, x, y);
     if (deg !== null) set(deg, true);
   };
+
+  // Typing drives the dial + fires, but does NOT rewrite the field mid-edit
+  // (that would fight the caret); blur normalizes it to the rounded value.
+  num.addEventListener("input", () => {
+    const v = parseFloat(num.value);
+    if (Number.isFinite(v)) { applyHeading(v); onChange?.(heading); }
+  });
+  num.addEventListener("blur", () => { num.value = String(Math.round(heading)); });
 
   let dragging = false;
   canvas.addEventListener("pointerdown", (e) => {
@@ -105,6 +149,19 @@ export function createCompass({ initial = 0, size = 72, onChange } = {}) {
     element: container,
     setValue: (deg) => set(deg, false),
     getValue: () => heading,
+    // See location_search.js — aim the label so the number field's left lands
+    // on the native control column, then correct the residual (scale = zoom).
+    matchLabel: ({ targetLeft, fontSize, scale = 1 } = {}) => {
+      if (!labelEl) return;
+      if (fontSize) labelEl.style.fontSize = fontSize;
+      container.style.gap = "0px";
+      if (targetLeft == null || !container.isConnected) return;
+      const contLeft = container.getBoundingClientRect().left;
+      const w = (targetLeft - contLeft) / scale;
+      labelEl.style.flex = `0 0 ${Math.max(w, 0)}px`;
+      const residual = (num.getBoundingClientRect().left - targetLeft) / scale;
+      labelEl.style.flex = `0 0 ${Math.max(w - residual, 0)}px`;
+    },
     destroy: () => {},
   };
 }

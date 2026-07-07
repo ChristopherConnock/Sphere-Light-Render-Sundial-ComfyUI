@@ -132,6 +132,7 @@ app.registerExtension({
       return w ? String(w.value) : def;
     };
 
+
     const doRender = () => {
       const { az: azDeg, el: elDeg, intensity } = getAngles();
       const az = azDeg * Math.PI / 180;
@@ -163,30 +164,22 @@ app.registerExtension({
       "latitude", "longitude", "year", "month", "day", "hour", "minute", "compass",
     ];
 
-    // Reversibly collapse/restore a widget. Native widgets swap computeSize/
-    // draw/type; DOM widgets (have `.element`) also toggle display, and keep
-    // their internal draw untouched.
+    // Show/hide a widget. In the current ComfyUI frontend, layout inclusion is
+    // governed ONLY by the `hidden` boolean — LGraphNode.getLayoutWidgets()
+    // filters `!w.hidden`, and drawWidgets() skips it. The old
+    // `type="hidden"`/`computeSize=[0,0]` trick does NOT remove a native
+    // widget's row (it leaves a blank gap). `options.hidden` covers the Vue
+    // renderer. Works for native and DOM widgets alike — the frontend hides a
+    // hidden DOM widget's element itself (v-show), so we don't touch the element.
     const setWidgetVisible = (w, visible) => {
       if (!w) return;
-      const isDom = !!w.element;
-      if (visible) {
-        if (w._slOrig) {
-          w.computeSize = w._slOrig.computeSize;
-          w.type = w._slOrig.type;
-          if (!isDom) w.draw = w._slOrig.draw;
-          w._slOrig = null;
-        }
-        if (isDom) w.element.style.display = "";
-      } else {
-        if (!w._slOrig) w._slOrig = { computeSize: w.computeSize, type: w.type, draw: w.draw };
-        w.computeSize = () => [0, 0];
-        w.type = "hidden";
-        if (!isDom) w.draw = () => {};
-        if (isDom) w.element.style.display = "none";
-      }
+      w.hidden = !visible;
+      (w.options ??= {}).hidden = !visible;
     };
 
     const applyVisibility = () => {
+      // Keep the current preview size; only the top (widget) area changes height.
+      const side = Math.max(node.size[1] - TOP_WIDGETS_H() - 16, 120);
       const show = new Set(visibleWidgets({
         sunMode:      getStr("sun_mode", "manual"),
         locationMode: getStr("location_mode", "city"),
@@ -194,8 +187,13 @@ app.registerExtension({
       for (const name of TOGGLEABLE) {
         setWidgetVisible(node.widgets?.find((w) => w.name === name), show.has(name));
       }
-      node.setSize([node.size[0], TOP_WIDGETS_H() + getPreviewRect().side + 16]);
+      // arrange() only ever grows the node, so shrink it explicitly — otherwise
+      // hiding widgets leaves the node tall with a blank gap.
+      node.setSize([node.size[0], TOP_WIDGETS_H() + side + 16]);
       app.graph.setDirtyCanvas(true, true);
+      // Align our DOM labels once the (now-visible) widgets are mounted. Only in
+      // date/time mode — in manual, the search/compass are unmounted (v2 v-if).
+      if (getStr("sun_mode", "manual") === "date/time") trySyncLabels();
     };
 
     const hookSliders = () => {
@@ -219,19 +217,20 @@ app.registerExtension({
       const wb = node.widgets?.find(w => w.name === "render_b64");
       if (!wb || wb._hidden) return;
       wb._hidden = true;
-      wb.computeSize = () => [0, 0];
-      wb.draw = () => {};
-      wb.type = "hidden";
+      wb.hidden = true;
+      (wb.options ??= {}).hidden = true;
     };
 
     const TOP_WIDGETS_H = () => {
       let h = LiteGraph.NODE_TITLE_HEIGHT + 8;
       for (const w of node.widgets ?? []) {
         if (w.name === "_3d_preview") break;
-        if (w.type === "hidden") continue;
-        const wh = w.computeSize
+        if (w.hidden) continue;
+        // DOM widgets size via computeLayoutSize (not computeSize); we pin their
+        // row height in _slRowH so the preview below them is placed correctly.
+        const wh = w._slRowH ?? (w.computeSize
           ? w.computeSize(node.size[0])[1]
-          : LiteGraph.NODE_WIDGET_HEIGHT;
+          : LiteGraph.NODE_WIDGET_HEIGHT);
         h += wh + 4;
       }
       return h;
@@ -272,38 +271,7 @@ app.registerExtension({
       },
     };
 
-    // One-line status under the inputs: what the location resolved to, or why
-    // it didn't. Kept in sync by getAngles() via node._slStatus.
-    const statusWidget = {
-      name:      "_sun_status",
-      type:      "sun_status",
-      value:     null,
-      serialize: false,
-      options:   { serialize: false },
-
-      computeSize(nw) { return [nw, node._slStatus ? 18 : 0]; },
-
-      draw(ctx2d, node, widget_width, y) {
-        const s = node._slStatus;
-        if (!s) return;
-        ctx2d.save();
-        ctx2d.font = "12px sans-serif";
-        ctx2d.textAlign = "left";
-        ctx2d.textBaseline = "middle";
-        ctx2d.fillStyle = s[0] === "⚠" ? "#e0a848" : "#79c0ff";
-        let text = s;
-        const maxW = widget_width - 24;
-        while (text.length > 6 && ctx2d.measureText(text + "…").width > maxW) {
-          text = text.slice(0, -1);
-        }
-        if (text !== s) text += "…";
-        ctx2d.fillText(text, 12, y + 9);
-        ctx2d.restore();
-      },
-    };
-
     node.widgets = node.widgets || [];
-    node.widgets.push(statusWidget);
     node.widgets.push(previewWidget);
 
     node.onRemoved = function() {
@@ -333,19 +301,24 @@ app.registerExtension({
       if (!locW) return;
       try {
         const search = createLocationSearch({
+          label:      "location",   // DOM widgets have no built-in label; render our own
           getRecords: () => node._slCities || [],
           initial:    String(locW.value ?? ""),
           onSelect:   (rec) => { locW.value = formatLabel(rec); doRender(); },
           onText:     (t)   => { locW.value = t; debounced(); },
         });
         node._slSearch = search;
+        // margin:0 + the element's own 15px padding aligns it with native
+        // widgets (whose margin is 15, vs the DOM-widget default of 10).
         const w = node.addDOMWidget("location_search", "location_search",
-                                    search.element, { serialize: false });
-        if (w) w.label = "location";   // clean label instead of the raw widget name
+                                    search.element, {
+          serialize: false, margin: 0,
+          getHeight: () => 32, getMinHeight: () => 32, getMaxHeight: () => 32,
+        });
+        if (w) w._slRowH = 32;
         // Hide the plain (still-serialized) location widget; the search drives it.
-        locW.computeSize = () => [0, 0];
-        locW.draw = () => {};
-        locW.type = "hidden";
+        locW.hidden = true;
+        (locW.options ??= {}).hidden = true;
         // Best-effort: place the search where 'location' was.
         const ws = node.widgets;
         const di = ws.indexOf(w), li = ws.indexOf(locW);
@@ -369,15 +342,18 @@ app.registerExtension({
       if (!headingW) return;
       try {
         const compass = createCompass({
+          label:    "heading",
           initial:  parseFloat(headingW.value) || 0,
           onChange: (deg) => { headingW.value = deg; debounced(); },
         });
         node._slCompass = compass;
-        const w = node.addDOMWidget("compass", "compass", compass.element, { serialize: false });
-        if (w) w.label = "heading";
-        headingW.computeSize = () => [0, 0];
-        headingW.draw = () => {};
-        headingW.type = "hidden";
+        const w = node.addDOMWidget("compass", "compass", compass.element, {
+          serialize: false, margin: 0,
+          getHeight: () => 72, getMinHeight: () => 72, getMaxHeight: () => 72,
+        });
+        if (w) w._slRowH = 72;
+        headingW.hidden = true;
+        (headingW.options ??= {}).hidden = true;
         const ws = node.widgets;
         const di = ws.indexOf(w), hi = ws.indexOf(headingW);
         if (di > -1 && hi > -1 && di !== hi + 1) {
@@ -392,12 +368,53 @@ app.registerExtension({
     };
 
     // The raw widget names ("sun_mode", "location_mode") are unclear; give the
-    // toggles human labels. LiteGraph draws `label || name`. Idempotent.
+    // toggles human labels. Lowercase to match the other (native) labels.
+    // LiteGraph draws `label || name`. Idempotent.
     const relabelToggles = () => {
       const sm = node.widgets?.find((w) => w.name === "sun_mode");
-      if (sm) sm.label = "Light direction";
+      if (sm) sm.label = "light direction";
       const lm = node.widgets?.find((w) => w.name === "location_mode");
-      if (lm) lm.label = "Location by";
+      if (lm) lm.label = "location by";
+    };
+
+    // v2 (Vue nodes) lays each node out as a 3-column grid
+    // [slot | label | control] and sizes the label column to the longest native
+    // label, in a larger font than our DOM-widget defaults. Read the grid's
+    // RESOLVED column widths (col 2 = the label column) and its font, and match
+    // our labels so the search/compass line up with the sliders/combos. Only
+    // needs the grid element, which always exists in v2; a no-op on v1 (fallback
+    // CSS width applies). Returns false until the node's DOM is mounted.
+    const syncLabels = () => {
+      // Use whichever DOM widget is currently mounted (v2 unmounts hidden ones).
+      const el = [node._slSearch?.element, node._slCompass?.element].find(e => e?.isConnected);
+      const grid = el?.closest?.(".lg-node-widgets, [data-testid='node-widgets']");
+      const natLabel = grid?.querySelector?.("[data-testid='widget-layout-field-label']");
+      if (!natLabel) return false;
+      // The control column is the label's sibling in the native widget's subgrid.
+      const controlDiv = [...(natLabel.parentElement?.children || [])].find(c => c !== natLabel);
+      if (!controlDiv) return false;
+      const lr = natLabel.getBoundingClientRect();
+      const scale = natLabel.offsetWidth ? lr.width / natLabel.offsetWidth : 1; // canvas zoom
+      const arg = {
+        targetLeft: controlDiv.getBoundingClientRect().left,
+        fontSize:   getComputedStyle(natLabel).fontSize,
+        scale,
+      };
+      if (node._slSearch?.element?.isConnected)  node._slSearch.matchLabel(arg);
+      if (node._slCompass?.element?.isConnected) node._slCompass.matchLabel(arg);
+      return true;
+    };
+
+    // Retry until the (v2) node DOM is mounted; a fresh token cancels stale loops.
+    let syncToken = 0;
+    const trySyncLabels = () => {
+      const my = ++syncToken;
+      let tries = 0;
+      const attempt = () => {
+        if (my !== syncToken || syncLabels()) return;
+        if (tries++ < 12) setTimeout(attempt, 200);
+      };
+      attempt();
     };
 
     const initW = Math.max(node.size?.[0] || 300, 280);
