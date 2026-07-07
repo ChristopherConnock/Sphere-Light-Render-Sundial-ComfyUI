@@ -48,33 +48,28 @@ export function createCompass({ initial = 0, size = 64, onChange, label } = {}) 
     container.appendChild(labelEl);
   }
 
-  // Control area spanning the node's control column: the number field sits at
-  // its left (aligned with the inputs above), the dial is centered within it.
-  const controlWrap = document.createElement("div");
-  Object.assign(controlWrap.style, {
-    position: "relative", flex: "1 1 auto", minWidth: "0", height: size + "px",
-    display: "flex", alignItems: "center", justifyContent: "center",
-  });
-  container.appendChild(controlWrap);
-
   const num = document.createElement("input");
   num.type = "number"; num.min = "0"; num.max = "360"; num.step = "1";
   num.className = "sl-compass-num";
   num.value = String(Math.round(heading));
   Object.assign(num.style, {
-    position: "absolute", left: "0", top: "50%", transform: "translateY(-50%)",
-    width: "46px", boxSizing: "border-box", padding: "5px 6px", textAlign: "center",
+    flex: "0 0 auto", width: "46px", boxSizing: "border-box", padding: "5px 6px", textAlign: "center",
     background: FIELD_BG, color: FIELD_TEXT, border: "none", borderRadius: "8px",
     fontFamily: "inherit", fontSize: "12px",
     outline: "none", appearance: "textfield", MozAppearance: "textfield",
   });
-  controlWrap.appendChild(num);
+  container.appendChild(num);
 
   const canvas = document.createElement("canvas");
   canvas.width = size * SS;
   canvas.height = size * SS;
-  Object.assign(canvas.style, { width: size + "px", height: size + "px", flex: "0 0 auto", cursor: "pointer", touchAction: "none" });
-  controlWrap.appendChild(canvas);
+  // The container gap is 0 (so the number lines up with the control column), so
+  // the small gap between the number and the dial lives on the dial itself.
+  Object.assign(canvas.style, {
+    width: size + "px", height: size + "px", flex: "0 0 auto",
+    marginLeft: "12px", cursor: "pointer", touchAction: "none",
+  });
+  container.appendChild(canvas);
 
   const ctx = canvas.getContext("2d");
   const cx = size / 2, cy = size / 2, R = size / 2 - 11;
