@@ -28,13 +28,25 @@ The Node renders a 1024 x 1024 image as reference for the LoRA to understand whe
 
 ## Time of day
 
-Set `sun_mode` to `date/time` to position the light from a real sun position.
-Start typing a city in `location` and pick from the dropdown (e.g. `Austin, TX`,
-`London, UK`, `Tokyo, Japan`); then set the date/time and the compass `heading`
-the camera faces. A status line on the node shows what was resolved
-(`☀ London, England`) or warns when the city isn't found, so you always know
-whether it matched. Timezone and daylight-saving are handled automatically.
+The node has two modes, chosen by the **Light direction** toggle at the top:
 
-For a place not in the bundled list (cities over ~15k population), enter
-`latitude` / `longitude` directly — the timezone is borrowed from the nearest
-listed city. Rebuild the list with `python tools/build_cities.py`.
+- **Manual** — set the light with the `rotation` and `elevation` sliders (plus
+  `intensity`). This is the default.
+- **Date/time** — position the light from a real sun position. Only this mode's
+  inputs are shown, so the two modes never clutter each other.
+
+In **date/time** mode, pick where the location comes from with the **City /
+Coordinates** toggle — only the active one is shown, so it's always clear which
+drives the sun:
+
+- **City** — start typing a city and pick from the dropdown (e.g. `Austin, TX`,
+  `London, UK`, `Tokyo, Japan`).
+- **Coordinates** — for a place not in the bundled list (cities over ~15k
+  population), enter `latitude` / `longitude` directly; the timezone is borrowed
+  from the nearest listed city.
+
+Set the date and time, then drag the **compass** dial to the direction the camera
+faces (N at top, clockwise). A status line shows what was resolved
+(`☀ London, England`) or warns when a city isn't found. Timezone and
+daylight-saving are handled automatically. Rebuild the city list with
+`python tools/build_cities.py`.
