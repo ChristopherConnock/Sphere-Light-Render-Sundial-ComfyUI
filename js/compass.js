@@ -8,7 +8,7 @@ export function pointerToHeading(cx, cy, x, y) {
   const dx = x - cx;
   const dy = y - cy;
   if (dx === 0 && dy === 0) return null;
-  // atan2(dx, -dy): up(dx0,-dy>0)->0, right->90, down->180, left->270.
+  // atan2(dx, -dy): up(dx=0,-dy>0)->0, right->90, down->180, left->270.
   const deg = Math.atan2(dx, -dy) * 180 / Math.PI;
   return (deg + 360) % 360;
 }
@@ -95,6 +95,9 @@ export function createCompass({ initial = 0, size = 72, onChange } = {}) {
     dragging = false;
     canvas.releasePointerCapture?.(e.pointerId);
   });
+  // If the pointer sequence is canceled (system gesture, interrupted touch),
+  // no pointerup fires — clear the drag flag so a later hover can't move the needle.
+  canvas.addEventListener("pointercancel", () => { dragging = false; });
 
   draw();
 
