@@ -16,10 +16,11 @@ class SphereLightNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "sun_mode":  (["manual", "date/time"], {"default": "manual"}),
                 "rotation":  ("FLOAT", {"default": 0.0,  "min": -180, "max": 180, "step": 1,   "display": "slider"}),
                 "elevation": ("FLOAT", {"default": 45.0, "min": 5,    "max": 85,  "step": 1,   "display": "slider"}),
                 "intensity": ("FLOAT", {"default": 1.5,  "min": 0.2,  "max": 3.0, "step": 0.1, "display": "slider"}),
-                "sun_mode":  (["manual", "date/time"], {"default": "manual"}),
+                "location_mode": (["city", "coords"], {"default": "city"}),
                 "location":  ("STRING", {"default": "Austin, TX", "multiline": False}),
                 "latitude":  ("FLOAT", {"default": 0.0, "min": -90.0,  "max": 90.0,  "step": 0.0001}),
                 "longitude": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.0001}),
@@ -39,12 +40,13 @@ class SphereLightNode:
     CATEGORY = "render/3d"
     OUTPUT_NODE = False
 
-    def execute(self, rotation, elevation, intensity, sun_mode, location,
-                latitude, longitude, year, month, day, hour, minute, heading,
-                render_b64):
-        # Positioning params (sun_mode..heading, latitude/longitude) are consumed
-        # client-side in js/sphere_widget.js; the server only needs render_b64.
-        # They appear here because ComfyUI passes every declared input.
+    def execute(self, sun_mode, rotation, elevation, intensity, location_mode,
+                location, latitude, longitude, year, month, day, hour, minute,
+                heading, render_b64):
+        # Positioning params (sun_mode, rotation..heading, location_mode,
+        # latitude/longitude) are consumed client-side in js/sphere_widget.js;
+        # the server only needs render_b64. They appear here because ComfyUI
+        # passes every declared input.
         img = None
         if render_b64 and render_b64.startswith("data:image"):
             if len(render_b64) > MAX_B64_CHARS:

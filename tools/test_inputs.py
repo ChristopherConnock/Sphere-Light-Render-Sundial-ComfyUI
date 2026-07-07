@@ -14,13 +14,15 @@ spec = importlib.util.spec_from_file_location("slnode", NODE)
 mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
 
 req = mod.SphereLightNode.INPUT_TYPES()["required"]
-for k in ["sun_mode", "location", "latitude", "longitude",
+for k in ["sun_mode", "location_mode", "location", "latitude", "longitude",
           "year", "month", "day", "hour", "minute", "heading"]:
     assert k in req, f"missing input: {k}"
 assert req["sun_mode"][0] == ["manual", "date/time"], req["sun_mode"]
+assert req["location_mode"][0] == ["city", "coords"], req["location_mode"]
 
 # execute must still work and ignore the new params (empty render_b64 -> gray)
 node = mod.SphereLightNode()
-(t,) = node.execute(0.0, 45.0, 1.5, "manual", "Austin, TX", 0.0, 0.0, 2025, 6, 21, 12, 0, 0.0, "")
+(t,) = node.execute("manual", 0.0, 45.0, 1.5, "city", "Austin, TX", 0.0, 0.0,
+                    2025, 6, 21, 12, 0, 0.0, "")
 assert tuple(t.shape) == (1, 1024, 1024, 3), t.shape
 print("test_inputs: OK")
