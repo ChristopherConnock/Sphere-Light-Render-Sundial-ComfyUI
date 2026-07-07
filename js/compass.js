@@ -21,6 +21,9 @@ export function pointerToHeading(cx, cy, x, y) {
 // widgets; the dial itself uses literal accent colors (N amber, needle blue).
 export function createCompass({ initial = 0, size = 64, onChange, label } = {}) {
   let heading = (((Number(initial) || 0) % 360) + 360) % 360;
+  const SS = 3;   // canvas supersample factor: a DOM-widget canvas isn't
+                  // auto-scaled like a legacy widget canvas, so render at 3× and
+                  // down-display for crisp text/lines instead of a blurry dial.
 
   // One-time: strip the number input's spin buttons so it reads like a pill.
   if (typeof document !== "undefined" && !document.getElementById("sl-compass-style")) {
@@ -45,44 +48,54 @@ export function createCompass({ initial = 0, size = 64, onChange, label } = {}) 
     container.appendChild(labelEl);
   }
 
+  // Control area spanning the node's control column: the number field sits at
+  // its left (aligned with the inputs above), the dial is centered within it.
+  const controlWrap = document.createElement("div");
+  Object.assign(controlWrap.style, {
+    position: "relative", flex: "1 1 auto", minWidth: "0", height: size + "px",
+    display: "flex", alignItems: "center", justifyContent: "center",
+  });
+  container.appendChild(controlWrap);
+
   const num = document.createElement("input");
   num.type = "number"; num.min = "0"; num.max = "360"; num.step = "1";
   num.className = "sl-compass-num";
   num.value = String(Math.round(heading));
   Object.assign(num.style, {
-    flex: "0 0 auto", width: "52px", boxSizing: "border-box",
-    padding: "5px 6px", textAlign: "center",
-    background: FIELD_BG, color: FIELD_TEXT, border: "none",
-    borderRadius: "8px", fontFamily: "inherit", fontSize: "12px",
+    position: "absolute", left: "0", top: "50%", transform: "translateY(-50%)",
+    width: "46px", boxSizing: "border-box", padding: "5px 6px", textAlign: "center",
+    background: FIELD_BG, color: FIELD_TEXT, border: "none", borderRadius: "8px",
+    fontFamily: "inherit", fontSize: "12px",
     outline: "none", appearance: "textfield", MozAppearance: "textfield",
   });
-  container.appendChild(num);
+  controlWrap.appendChild(num);
 
   const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  Object.assign(canvas.style, { flex: "0 0 auto", cursor: "pointer", touchAction: "none" });
-  container.appendChild(canvas);
+  canvas.width = size * SS;
+  canvas.height = size * SS;
+  Object.assign(canvas.style, { width: size + "px", height: size + "px", flex: "0 0 auto", cursor: "pointer", touchAction: "none" });
+  controlWrap.appendChild(canvas);
 
   const ctx = canvas.getContext("2d");
-  const cx = size / 2, cy = size / 2, R = size / 2 - 10;
+  const cx = size / 2, cy = size / 2, R = size / 2 - 11;
 
   const draw = () => {
+    ctx.setTransform(SS, 0, 0, SS, 0, 0);   // supersample -> crisp text/lines
     ctx.clearRect(0, 0, size, size);
 
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.strokeStyle = "#5a5a5a";
+    ctx.strokeStyle = "#6a6a6a";
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.font = "8px sans-serif";
+    ctx.font = "bold 10px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const [ch, deg] of [["N", 0], ["E", 90], ["S", 180], ["W", 270]]) {
       const a = deg * Math.PI / 180;
-      ctx.fillStyle = ch === "N" ? "#e0a848" : "#9aa0a6";
-      ctx.fillText(ch, cx + Math.sin(a) * (R + 5), cy - Math.cos(a) * (R + 5));
+      ctx.fillStyle = ch === "N" ? "#e0a848" : "#aab2bd";
+      ctx.fillText(ch, cx + Math.sin(a) * (R + 6), cy - Math.cos(a) * (R + 6));
     }
 
     const a = heading * Math.PI / 180;

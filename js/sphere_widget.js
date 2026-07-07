@@ -151,6 +151,12 @@ app.registerExtension({
       const wb  = node.widgets?.find(w => w.name === "render_b64");
       if (wb) wb.value = b64;
       app.graph.setDirtyCanvas(true, false);
+      // v2 (Vue nodes) draws the preview via a legacy-widget canvas that only
+      // repaints when told to. setDirtyCanvas doesn't reach it, so a city pick
+      // (which re-renders off-canvas) wouldn't show until some native widget
+      // changed. triggerDraw (set by the v2 WidgetLegacy host) forces it; it's
+      // undefined on v1, where setDirtyCanvas already repaints.
+      previewWidget.triggerDraw?.();
     };
 
     let debTimer = null;
