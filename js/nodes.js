@@ -114,6 +114,7 @@ async function setupSun(node, mode) {
     // Compass (serialized DOM widget; owns `heading` directly — "heading" isn't
     // declared in either sun node's INPUT_TYPES, so there is no native anchor).
     compass = createCompass({ label: "heading", initial: 0, onChange: () => scheduleRender() });
+    node._slCompass = compass;
     const headingW = addSerializedDOMWidget(node, {
       name: "heading", element: compass.element, height: 72,
       getValue: () => compass.getValue(), setValue: (v) => compass.setValue(Number(v) || 0),
@@ -129,6 +130,7 @@ async function setupSun(node, mode) {
         label: "city", getRecords: () => cities || [], initial: "Austin, TX",
         onSelect: () => render(), onText: () => scheduleRender(),
       });
+      node._slSearch = search;
       const searchW = addSerializedDOMWidget(node, {
         name: "city", element: search.element, height: 32,
         getValue: () => search.getText(), setValue: (v) => search.setText(String(v ?? "")),
