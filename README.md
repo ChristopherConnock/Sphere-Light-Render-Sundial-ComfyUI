@@ -26,6 +26,17 @@ The Node renders a 1024 x 1024 image as reference for the LoRA to understand whe
 
 <img width="1288" height="770" alt="Sphere_Light_Render_ComfyUI_Node" src="https://github.com/user-attachments/assets/3e6a27a6-2eca-442c-9f4f-91a674857f89" />
 
+## Nodes
+
+Four nodes are registered under **render/3d**:
+
+- **🔆 Sphere Light Render** — the original all-in-one node (mode + location toggles).
+- **🔆 Sphere Light — Manual** — set the light directly with `rotation` / `elevation` / `intensity`.
+- **🔆 Sphere Light — Sun (City)** — position the light from a real sun: pick a city, set date/time, drag the compass.
+- **🔆 Sphere Light — Sun (Coordinates)** — same, but enter `latitude` / `longitude` directly (timezone borrowed from the nearest listed city).
+
+The three split nodes have no mode toggles — the node you pick *is* the mode. The all-in-one node remains for existing workflows.
+
 ## Time of day
 
 The node has two modes, chosen by the **Light direction** toggle at the top:
