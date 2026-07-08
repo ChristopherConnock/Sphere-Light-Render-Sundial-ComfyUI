@@ -11,6 +11,36 @@ MAX_IMAGE_SIDE = 8192               # reject absurd dimensions (decompression-bo
 TARGET_SIZE    = 1024
 FALLBACK_GRAY  = (138, 138, 138)    # matches the JS clear color 0x8a8a8a
 
+def decode_render_b64(render_b64):
+    """Decode a data-URI PNG from the (untrusted) workflow into a
+    (1,1024,1024,3) float32 tensor. Empty/invalid/oversized -> gray fallback."""
+    img = None
+    if render_b64 and render_b64.startswith("data:image"):
+        if len(render_b64) > MAX_B64_CHARS:
+            print(f"[SphereLightNode] render_b64 too large "
+                  f"({len(render_b64)} chars); using gray fallback")
+        else:
+            try:
+                header, data = render_b64.split(",", 1)
+                img_bytes = base64.b64decode(data, validate=True)
+                probe = Image.open(io.BytesIO(img_bytes))
+                w, h = probe.size
+                if w > MAX_IMAGE_SIDE or h > MAX_IMAGE_SIDE:
+                    raise ValueError(f"image dimensions too large: {w}x{h}")
+                img = probe.convert("RGB").resize(
+                    (TARGET_SIZE, TARGET_SIZE), Image.LANCZOS)
+            except Exception as e:
+                print(f"[SphereLightNode] Error decoding render_b64: {e}")
+                img = None
+    else:
+        print("[SphereLightNode] no render_b64 provided; using gray fallback")
+
+    if img is None:
+        img = Image.new("RGB", (TARGET_SIZE, TARGET_SIZE), FALLBACK_GRAY)
+
+    arr = np.array(img).astype(np.float32) / 255.0
+    return torch.from_numpy(arr).unsqueeze(0)
+
 class SphereLightNode:
     @classmethod
     def INPUT_TYPES(cls):
@@ -47,34 +77,7 @@ class SphereLightNode:
         # latitude/longitude) are consumed client-side in js/sphere_widget.js;
         # the server only needs render_b64. They appear here because ComfyUI
         # passes every declared input.
-        img = None
-        if render_b64 and render_b64.startswith("data:image"):
-            if len(render_b64) > MAX_B64_CHARS:
-                print(f"[SphereLightNode] render_b64 too large "
-                      f"({len(render_b64)} chars); using gray fallback")
-            else:
-                try:
-                    header, data = render_b64.split(",", 1)
-                    img_bytes = base64.b64decode(data, validate=True)
-                    probe = Image.open(io.BytesIO(img_bytes))
-                    w, h = probe.size  # reads the header only; cheap, before we decode pixels
-                    if w > MAX_IMAGE_SIDE or h > MAX_IMAGE_SIDE:
-                        raise ValueError(f"image dimensions too large: {w}x{h}")
-                    img = probe.convert("RGB").resize(
-                        (TARGET_SIZE, TARGET_SIZE), Image.LANCZOS)
-                except Exception as e:
-                    print(f"[SphereLightNode] Error decoding render_b64: {e}")
-                    img = None
-        else:
-            # No image from the widget (e.g. an API/headless run where the JS
-            # never rendered). Make it visible instead of silently emitting gray.
-            print("[SphereLightNode] no render_b64 provided; using gray fallback")
-
-        if img is None:
-            img = Image.new("RGB", (TARGET_SIZE, TARGET_SIZE), FALLBACK_GRAY)
-
-        arr = np.array(img).astype(np.float32) / 255.0
-        tensor = torch.from_numpy(arr).unsqueeze(0)
+        tensor = decode_render_b64(render_b64)
         return (tensor,)
 
 
