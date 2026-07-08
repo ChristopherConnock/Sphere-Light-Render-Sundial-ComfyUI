@@ -21,8 +21,9 @@
 
 ## File Structure
 
-- **Create `js/preview.js`** — node-agnostic render engine + preview-widget scaffolding + generic widget helpers. Imported by the kitchen-sink and the three new nodes.
-- **Create `js/preview.test.js`** — unit test for the pure `lightPosition` helper.
+- **Create `js/light.js`** — the pure `lightPosition` math helper (imports nothing from ComfyUI, so it is unit-testable under `node --test`).
+- **Create `js/light.test.js`** — unit test for `lightPosition`.
+- **Create `js/preview.js`** — node-agnostic render engine + preview-widget scaffolding + generic widget helpers; imports `lightPosition` from `./light.js` and `app` from ComfyUI. Imported by the kitchen-sink and the three new nodes.
 - **Create `js/status.js`** — pure helpers `haversineKm` + `nearestCityLabel` for the read-only status line.
 - **Create `js/status.test.js`** — unit tests for `status.js`.
 - **Create `js/nodes.js`** — registers the three new nodes (`setupManual`, `setupSun`) using `preview.js`, `compass.js`, `location_search.js`, `sun.js`, `geo.js`, `status.js`.
@@ -431,13 +432,16 @@ git commit -m "feat: nearestCityLabel status helper for coords node"
 ### Task 4: Extract `js/preview.js` engine and rewire the kitchen-sink
 
 **Files:**
+- Create: `js/light.js`
+- Create: `js/light.test.js`
 - Create: `js/preview.js`
-- Create: `js/preview.test.js`
 - Modify: `js/sphere_widget.js` (remove the inline engine; import it)
 
 **Interfaces:**
-- Produces (all in `js/preview.js`):
+- **Split for testability:** `preview.js` statically imports `app` from `../../scripts/app.js`, which does not resolve under `node --test` — so any test importing `preview.js` crashes on that import. The one unit-testable piece therefore lives in an `app`-free module `js/light.js`, which `preview.js` imports (same reason `compass.js` keeps `pointerToHeading` importable).
+- Produces in `js/light.js`:
   - `lightPosition(azDeg, elDeg, r = 10) -> { x, y, z }` — pure; `x = r·cos(el)·sin(az)`, `y = r·sin(el)`, `z = r·cos(el)·cos(az)` (az/el in degrees). Mirrors the mapping in `integration.test.js`.
+- Produces in `js/preview.js` (which does `import { lightPosition } from "./light.js"`):
   - `loadThree() -> Promise<void>` — moved verbatim from `sphere_widget.js:13-22`.
   - `buildScene() -> { renderer, scene, camera, dirLight, canvas }` — moved verbatim from `sphere_widget.js:24-79`.
   - `renderLight(ctx, { az, el, intensity }) -> string` — sets `ctx.dirLight.position` via `lightPosition`, sets `intensity`, renders, returns `ctx.canvas.toDataURL("image/png")`.
@@ -449,12 +453,12 @@ git commit -m "feat: nearestCityLabel status helper for coords node"
 
 - [ ] **Step 1: Write the failing test for the pure core**
 
-Create `js/preview.test.js`:
+Create `js/light.test.js`:
 
 ```javascript
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lightPosition } from "./preview.js";
+import { lightPosition } from "./light.js";
 
 test("noon-ish high sun sits mostly above (+Y dominates)", () => {
   const p = lightPosition(0, 90);
@@ -476,18 +480,16 @@ test("radius scales the vector", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test js/preview.test.js`
-Expected: FAIL — `Cannot find module './preview.js'`.
+Run: `node --test js/light.test.js`
+Expected: FAIL — `Cannot find module './light.js'`.
 
-- [ ] **Step 3: Create `js/preview.js`**
+- [ ] **Step 3: Create `js/light.js`, then `js/preview.js`**
 
-Start with the pure helper, then move the engine functions out of `sphere_widget.js` verbatim (see the Interfaces block for exact source line ranges) and assemble the module. Skeleton (fill the moved bodies from `sphere_widget.js` as noted):
+First create the pure helper `js/light.js`:
 
 ```javascript
-import { app } from "../../scripts/app.js";
-
-const THREE_CDN = new URL("./three.min.js", import.meta.url).href;
-
+// Pure light-position math, kept free of any ComfyUI (`app`) import so it stays
+// unit-testable under `node --test`.
 export function lightPosition(azDeg, elDeg, r = 10) {
   const az = (azDeg * Math.PI) / 180;
   const el = (elDeg * Math.PI) / 180;
@@ -497,6 +499,15 @@ export function lightPosition(azDeg, elDeg, r = 10) {
     z: r * Math.cos(el) * Math.cos(az),
   };
 }
+```
+
+Then create `js/preview.js`, importing `lightPosition` and moving the engine functions out of `sphere_widget.js` verbatim (see the Interfaces block for exact source line ranges). Skeleton (fill the moved bodies from `sphere_widget.js` as noted):
+
+```javascript
+import { app } from "../../scripts/app.js";
+import { lightPosition } from "./light.js";
+
+const THREE_CDN = new URL("./three.min.js", import.meta.url).href;
 
 export function loadThree() { /* verbatim from sphere_widget.js:13-22 */ }
 
@@ -596,7 +607,7 @@ and delete the now-dead `const b64 = ctx.canvas.toDataURL(...)` line (`:150`) si
 - [ ] **Step 5: Run all JS tests and confirm the pure core passes**
 
 Run: `node --test js/`
-Expected: PASS — all existing suites (`sun`, `geo`, `tz`, `solar`, `compass`, `integration`) plus `status` and `preview` green.
+Expected: PASS — all existing suites (`sun`, `geo`, `tz`, `solar`, `compass`, `integration`) plus `status` and `light` green.
 
 - [ ] **Step 6: Manual kitchen-sink regression**
 
@@ -605,7 +616,7 @@ Restart ComfyUI. Add the existing `🔆 Sphere Light Render` node. Confirm: the 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add js/preview.js js/preview.test.js js/sphere_widget.js
+git add js/light.js js/light.test.js js/preview.js js/sphere_widget.js
 git commit -m "refactor: extract render engine into preview.js; kitchen-sink imports it"
 ```
 
