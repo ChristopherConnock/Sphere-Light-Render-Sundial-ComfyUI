@@ -4,79 +4,7 @@ import { computeSunAngles } from "./sun.js";
 import { createLocationSearch, formatLabel } from "./location_search.js";
 import { pickSunSource, visibleWidgets } from "./mode.js";
 import { createCompass } from "./compass.js";
-
-// Vendored locally (was cdnjs) so the node works offline / air-gapped and
-// isn't exposed to a third-party CDN being compromised. Resolved relative to
-// this module's own URL, so it loads wherever ComfyUI serves the extension.
-const THREE_CDN = new URL("./three.min.js", import.meta.url).href;
-
-function loadThree() {
-  return new Promise((res, rej) => {
-    if (window.THREE) return res();
-    const s = document.createElement("script");
-    s.src = THREE_CDN;
-    s.onload = res;
-    s.onerror = rej;
-    document.head.appendChild(s);
-  });
-}
-
-function buildScene() {
-  const R = window.THREE;
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
-
-  const renderer = new R.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = R.PCFSoftShadowMap;
-  renderer.setSize(512, 512, false);
-  renderer.setClearColor(0x8a8a8a);
-  renderer.outputEncoding = R.sRGBEncoding;
-
-  const scene = new R.Scene();
-  scene.background = new R.Color(0x8a8a8a);
-
-  const camera = new R.PerspectiveCamera(35, 1, 0.1, 200);
-  camera.position.set(0, 6, 8);
-  camera.lookAt(0, -0.5, 0);
-
-  const plane = new R.Mesh(
-    new R.PlaneGeometry(100, 100),
-    new R.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 1, metalness: 0 })
-  );
-  plane.rotation.x = -Math.PI / 2;
-  plane.position.y = -1;
-  plane.receiveShadow = true;
-  scene.add(plane);
-
-  const sphere = new R.Mesh(
-    new R.SphereGeometry(1, 64, 64),
-    new R.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8, metalness: 0 })
-  );
-  sphere.position.y = 0;
-  sphere.castShadow = true;
-  sphere.receiveShadow = true;
-  scene.add(sphere);
-
-  scene.add(new R.AmbientLight(0xffffff, 0.2));
-
-  const dirLight = new R.DirectionalLight(0xffffff, 1.5);
-  dirLight.castShadow = true;
-  dirLight.shadow.mapSize.width  = 2048;
-  dirLight.shadow.mapSize.height = 2048;
-  dirLight.shadow.camera.near   = 0.1;
-  dirLight.shadow.camera.far    = 50;
-  dirLight.shadow.camera.left   = -8;
-  dirLight.shadow.camera.right  =  8;
-  dirLight.shadow.camera.top    =  8;
-  dirLight.shadow.camera.bottom = -8;
-  dirLight.shadow.bias = -0.0005;
-  dirLight.shadow.radius = 2;
-  scene.add(dirLight);
-
-  return { renderer, scene, camera, dirLight, canvas };
-}
+import { loadThree, buildScene, renderLight } from "./preview.js";
 
 app.registerExtension({
   name: "SphereLightRender",
@@ -134,20 +62,9 @@ app.registerExtension({
 
 
     const doRender = () => {
-      const { az: azDeg, el: elDeg, intensity } = getAngles();
-      const az = azDeg * Math.PI / 180;
-      const el = elDeg * Math.PI / 180;
-      const r  = 10;
-      ctx.dirLight.position.set(
-        r * Math.cos(el) * Math.sin(az),
-        r * Math.sin(el),
-        r * Math.cos(el) * Math.cos(az)
-      );
-      ctx.dirLight.intensity = intensity;
-      ctx.renderer.shadowMap.needsUpdate = true;
-      ctx.renderer.render(ctx.scene, ctx.camera);
+      const { az, el, intensity } = getAngles();
+      const b64 = renderLight(ctx, { az, el, intensity });
       node._slReady = true;
-      const b64 = ctx.canvas.toDataURL("image/png");
       const wb  = node.widgets?.find(w => w.name === "render_b64");
       if (wb) wb.value = b64;
       app.graph.setDirtyCanvas(true, false);
