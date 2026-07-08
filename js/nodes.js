@@ -121,12 +121,10 @@ async function setupSun(node, mode) {
     moveBeforePreview(node, headingW);
 
     if (mode === "city") {
-      // Unlike `heading`, "city" *is* declared in the Sun (City) node's
-      // INPUT_TYPES (the server receives it), so ComfyUI auto-adds a plain
-      // native text widget for it. Hide that native widget — same pattern as
-      // `render_b64` above — so only the searchable DOM widget (same name,
-      // same serialized slot) is shown and drives the value.
-      hideWidget(node, "city");
+      // "city" is not declared in the Sun (City) node's INPUT_TYPES — like
+      // `heading`, the serialize:true DOM widget below is its sole owner, so
+      // there's no native widget to hide (and no native anchor for the server
+      // to receive it from; execute() doesn't take a city argument).
       search = createLocationSearch({
         label: "city", getRecords: () => cities || [], initial: "Austin, TX",
         onSelect: () => render(), onText: () => scheduleRender(),
