@@ -10,6 +10,9 @@ class FT:
 faketorch.from_numpy = lambda a: FT(a)
 sys.modules["torch"] = faketorch
 
+# Repo root on the path so __init__.py's `import render_bridge` resolves.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 NODE = os.path.join(os.path.dirname(__file__), "..", "__init__.py")
 spec = importlib.util.spec_from_file_location("slnode", NODE)
 mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
