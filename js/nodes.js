@@ -62,7 +62,22 @@ async function setupManual(node) {
       intensity: num("intensity", 1.5),
     };
   };
-  const { render, scheduleRender, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
+  const { render, scheduleRender, renderWith, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
+
+  // Driven mode: driven.js calls reflect() to mirror pushed values onto the
+  // widgets, then renderWith() to render off-screen from those same values.
+  node._slDriven = {
+    renderWith,
+    reflect: (p) => {
+      for (const name of ["rotation", "elevation", "intensity"]) {
+        if (p[name] == null) continue;
+        const w = node.widgets?.find((w) => w.name === name);
+        if (w) w.value = p[name];
+      }
+      app.graph.setDirtyCanvas(true, false);
+    },
+  };
+
   setTimeout(() => {
     hideWidget(node, "render_b64");
     hookWidgets(node, ["rotation", "elevation", "intensity"], scheduleRender);
@@ -122,7 +137,26 @@ async function setupSun(node, mode) {
     return { az: r.rotation, el: r.elevation, intensity };
   };
 
-  const { render, scheduleRender, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
+  const { render, scheduleRender, renderWith, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
+
+  // Driven mode: driven.js calls reflect() to mirror pushed values onto the
+  // controls (compass needle, city field, native widgets), then renderWith() to
+  // render off-screen from those same values. heading/city go through the DOM
+  // overlays; the rest are plain native widgets. Compass/search may not exist
+  // yet (created in the setTimeout below) — the guards handle that.
+  node._slDriven = {
+    renderWith,
+    reflect: (p) => {
+      if (p.heading != null && node._slCompass) node._slCompass.setValue(parseFloat(p.heading));
+      if (p.city != null && node._slSearch) node._slSearch.setText(String(p.city));
+      for (const name of ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute"]) {
+        if (p[name] == null) continue;
+        const w = node.widgets?.find((w) => w.name === name);
+        if (w) w.value = p[name];
+      }
+      app.graph.setDirtyCanvas(true, false);
+    },
+  };
 
   loadCities().then((c) => { cities = c; render(); })
               .catch((e) => console.warn("[SphereLight] cities.json failed:", e));
