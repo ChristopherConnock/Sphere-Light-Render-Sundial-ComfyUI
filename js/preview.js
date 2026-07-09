@@ -202,5 +202,10 @@ export async function attachPreview(node, getAngles) {
   let debTimer = null;
   const scheduleRender = () => { clearTimeout(debTimer); debTimer = setTimeout(render, 80); };
 
-  return { ctx, render, scheduleRender, TOP_WIDGETS_H, previewWidget };
+  // Driven mode: render from explicit pushed params and return the dataURL for
+  // driven.js to POST back. Deliberately does not touch render_b64/_slReady —
+  // those belong to the widget-driven interactive path (render()/scheduleRender()).
+  const renderWith = (params) => renderLight(ctx, getAngles(params));
+
+  return { ctx, render, scheduleRender, renderWith, TOP_WIDGETS_H, previewWidget };
 }

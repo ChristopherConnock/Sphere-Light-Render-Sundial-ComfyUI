@@ -52,11 +52,16 @@ function addStatus(node) {
 }
 
 async function setupManual(node) {
-  const getAngles = () => ({
-    az: getVal(node, "rotation", 0),
-    el: getVal(node, "elevation", 45),
-    intensity: getVal(node, "intensity", 1.5),
-  });
+  // `pushed` (driven mode) supplies graph-resolved values; without it we read the
+  // widgets exactly as before. `num` picks pushed[name] when present, else widget.
+  const getAngles = (pushed) => {
+    const num = (name, d) => pushed && pushed[name] != null ? parseFloat(pushed[name]) : getVal(node, name, d);
+    return {
+      az: num("rotation", 0),
+      el: num("elevation", 45),
+      intensity: num("intensity", 1.5),
+    };
+  };
   const { render, scheduleRender, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
   setTimeout(() => {
     hideWidget(node, "render_b64");
@@ -78,20 +83,24 @@ async function setupSun(node, mode) {
   let search = null;
   let setStatus = () => {};
 
-  const getAngles = () => {
-    const intensity = getVal(node, "intensity", 1.5);
+  // `pushed` (driven mode) supplies graph-resolved values; without it we read the
+  // widgets exactly as before. num/str pick pushed[name] when present, else widget.
+  const getAngles = (pushed) => {
+    const num = (name, d) => pushed && pushed[name] != null ? parseFloat(pushed[name]) : getVal(node, name, d);
+    const str = (name, d) => pushed && pushed[name] != null ? String(pushed[name]) : getStr(node, name, d);
+    const intensity = num("intensity", 1.5);
     if (!cities) { setStatus(""); return { az: 0, el: 45, intensity }; }
-    const heading = getVal(node, "heading", 0);
+    const heading = num("heading", 0);
     const base = {
-      year: getVal(node, "year", 2025), month: getVal(node, "month", 6),
-      day: getVal(node, "day", 21), hour: getVal(node, "hour", 12),
-      minute: getVal(node, "minute", 0), heading,
+      year: num("year", 2025), month: num("month", 6),
+      day: num("day", 21), hour: num("hour", 12),
+      minute: num("minute", 0), heading,
     };
     let params;
     if (mode === "city") {
-      params = { ...base, location: getStr(node, "city", "") };
+      params = { ...base, location: str("city", "") };
     } else {
-      const lat = getVal(node, "latitude", 0), lng = getVal(node, "longitude", 0);
+      const lat = num("latitude", 0), lng = num("longitude", 0);
       params = { ...base, lat, lng };
     }
     const r = computeSunAngles(params, cities);
