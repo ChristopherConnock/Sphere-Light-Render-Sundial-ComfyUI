@@ -59,7 +59,7 @@ class SphereLightNode:
                 "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
                 "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
-                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 1, "display": "slider"}),
+                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01, "display": "slider"}),
                 "render_b64": ("STRING", {"default": "", "multiline": False}),
             }
         }
@@ -117,7 +117,7 @@ class SphereLightSunCityNode:
                 "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
                 "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
-                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 1, "display": "slider"}),
+                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01, "display": "slider"}),
                 "render_b64": ("STRING", {"default": "", "multiline": False}),
             }
         }
@@ -148,7 +148,7 @@ class SphereLightSunCoordsNode:
                 "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
                 "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
-                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 1, "display": "slider"}),
+                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01, "display": "slider"}),
                 "render_b64": ("STRING", {"default": "", "multiline": False}),
             }
         }

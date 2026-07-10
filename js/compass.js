@@ -49,9 +49,9 @@ export function createCompass({ initial = 0, size = 64, onChange, label, showNum
   }
 
   const num = document.createElement("input");
-  num.type = "number"; num.min = "0"; num.max = "360"; num.step = "1";
+  num.type = "number"; num.min = "0"; num.max = "360"; num.step = "0.01";
   num.className = "sl-compass-num";
-  num.value = String(Math.round(heading));
+  num.value = String(Math.round(heading * 100) / 100);
   Object.assign(num.style, {
     flex: "0 0 auto", width: "46px", boxSizing: "border-box", padding: "5px 6px", textAlign: "center",
     background: FIELD_BG, color: FIELD_TEXT, border: "none", borderRadius: "8px",
@@ -116,7 +116,7 @@ export function createCompass({ initial = 0, size = 64, onChange, label, showNum
   // set() also rewrites the number field — used by the dial and external setValue.
   const set = (deg, fire) => {
     applyHeading(deg);
-    num.value = String(Math.round(heading));
+    num.value = String(Math.round(heading * 100) / 100);
     if (fire) onChange?.(heading);
   };
 
@@ -134,7 +134,7 @@ export function createCompass({ initial = 0, size = 64, onChange, label, showNum
     const v = parseFloat(num.value);
     if (Number.isFinite(v)) { applyHeading(v); onChange?.(heading); }
   });
-  num.addEventListener("blur", () => { num.value = String(Math.round(heading)); });
+  num.addEventListener("blur", () => { num.value = String(Math.round(heading * 100) / 100); });
 
   let dragging = false;
   canvas.addEventListener("pointerdown", (e) => {
