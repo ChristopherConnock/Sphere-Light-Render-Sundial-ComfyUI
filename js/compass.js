@@ -19,7 +19,7 @@ export function pointerToHeading(cx, cy, x, y) {
 // dial — all synced. Writes `heading` degrees via onChange. `theme` carries the
 // node's widget colors (from LiteGraph.WIDGET_*) so the input matches the native
 // widgets; the dial itself uses literal accent colors (N amber, needle blue).
-export function createCompass({ initial = 0, size = 64, onChange, label } = {}) {
+export function createCompass({ initial = 0, size = 64, onChange, label, showNumber = true } = {}) {
   let heading = (((Number(initial) || 0) % 360) + 360) % 360;
   const SS = 3;   // canvas supersample factor: a DOM-widget canvas isn't
                   // auto-scaled like a legacy widget canvas, so render at 3× and
@@ -58,7 +58,8 @@ export function createCompass({ initial = 0, size = 64, onChange, label } = {}) 
     fontFamily: "inherit", fontSize: "12px",
     outline: "none", appearance: "textfield", MozAppearance: "textfield",
   });
-  container.appendChild(num);
+  if (showNumber) container.appendChild(num);   // dial-only when the native
+                                                // `heading` widget supplies the field
 
   const canvas = document.createElement("canvas");
   canvas.width = size * SS;

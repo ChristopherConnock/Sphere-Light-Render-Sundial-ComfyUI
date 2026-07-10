@@ -16,20 +16,6 @@ const getStr = (node, name, def) => {
   return w ? String(w.value) : def;
 };
 
-// Expose a (hidden) widget as a graph input SOCKET so it can be driven, while
-// its on-node control (compass/search) keeps driving when nothing is connected.
-// convertWidgetToInput keeps the native widget — its value still serializes, so
-// persistence is unchanged. Guarded so reload (where the input is already
-// restored from the saved graph) doesn't try to convert a second time.
-function exposeAsInput(node, name) {
-  if (!node.convertWidgetToInput) return;
-  if ((node.inputs || []).some((s) => s.name === name)) return;
-  const w = node.widgets?.find((w) => w.name === name);
-  if (!w) return;
-  try { node.convertWidgetToInput(w); }
-  catch (e) { console.warn(`[SphereLight] could not expose ${name} as input:`, e); }
-}
-
 // If a positioning input is connected in the graph, follow the link to its
 // source node and read the driven value client-side (a Primitive or other
 // widget-backed source). Returns undefined when the input isn't connected or
@@ -166,6 +152,8 @@ async function setupSun(node, mode) {
     const intensity = num("intensity", 1.5);
     if (!cities) { setStatus(""); return { az: 0, el: 45, intensity }; }
     const heading = num("heading", 0);
+    if (compass) compass.setValue(heading);   // dial reflects the value in use
+                                               // (the widget's, or a driven one)
     const base = {
       year: num("year", 2025), month: num("month", 6),
       day: num("day", 21), hour: num("hour", 12),
@@ -215,9 +203,11 @@ async function setupSun(node, mode) {
     // ComfyUI replays widgets_values on load.
     const headingW = node.widgets.find((w) => w.name === "heading");
     compass = createCompass({
-      label:    "heading",
-      initial:  parseFloat(headingW.value) || 0,
-      onChange: (deg) => { headingW.value = deg; scheduleRender(); },
+      // No label/number: the native `heading` slider above is the labelled,
+      // connectable field; the dial is just its visual companion.
+      showNumber: false,
+      initial:    parseFloat(headingW.value) || 0,
+      onChange:   (deg) => { headingW.value = deg; scheduleRender(); },
     });
     node._slCompass = compass;
     const compassW = node.addDOMWidget("compass", "compass", compass.element, {
@@ -225,9 +215,11 @@ async function setupSun(node, mode) {
       getHeight: () => 72, getMinHeight: () => 72, getMaxHeight: () => 72,
     });
     compassW._slRowH = 72;
-    hideWidget(node, "heading");
     moveBeforePreview(node, compassW);
-    exposeAsInput(node, "heading");   // graph-driveable; compass drives when unconnected
+    // Keep the native `heading` widget VISIBLE (not hidden) so it's a normal
+    // drop target — you connect it by dragging a link onto it, exactly like the
+    // other params. (A hidden widget exposes no hoverable input.) The compass
+    // still drives it when nothing is connected, and reflects the driven value.
 
     if (mode === "city") {
       // City search: same native-anchor pattern, mirroring `location_search`
@@ -247,12 +239,10 @@ async function setupSun(node, mode) {
         getHeight: () => 32, getMinHeight: () => 32, getMaxHeight: () => 32,
       });
       searchW._slRowH = 32;
-      hideWidget(node, "city");
-      moveBeforePreview(node, searchW);
-      exposeAsInput(node, "city");   // graph-driveable; search drives when unconnected
-      hookWidgets(node, ["intensity", "year", "month", "day", "hour", "minute"], scheduleRender);
+      moveBeforePreview(node, searchW);   // city stays visible as a drop target
+      hookWidgets(node, ["intensity", "city", "year", "month", "day", "hour", "minute", "heading"], scheduleRender);
     } else {
-      hookWidgets(node, ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute"], scheduleRender);
+      hookWidgets(node, ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute", "heading"], scheduleRender);
     }
 
     setStatus = addStatus(node);
@@ -262,8 +252,6 @@ async function setupSun(node, mode) {
   }, 100);
   setTimeout(() => {
     hideWidget(node, "render_b64");
-    hideWidget(node, "heading");
-    if (mode === "city") hideWidget(node, "city");
     const w = Math.max(node.size?.[0] || 320, 300);
     node.setSize([w, TOP_WIDGETS_H() + (w - 24) + 16]);
   }, 700);
