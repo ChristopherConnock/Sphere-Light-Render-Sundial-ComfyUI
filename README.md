@@ -28,7 +28,7 @@ The Node renders a 1024 x 1024 image as reference for the LoRA to understand whe
 
 ## Nodes
 
-Three nodes are registered under **render/3d** — the node you pick *is* the mode,
+Four nodes are registered under **render/3d** — the node you pick *is* the mode,
 so there are no mode toggles:
 
 - **🔆 Sphere Light — Manual** — set the light directly with `rotation` /
@@ -38,6 +38,11 @@ so there are no mode toggles:
   `heading`.
 - **🔆 Sphere Light — Sun (Coordinates)** — same, but enter `latitude` /
   `longitude` directly (timezone borrowed from the nearest listed city).
+- **📷 Sphere Light — Photo (EXIF)** — upload a photo; its EXIF supplies
+  `latitude`/`longitude`, the nearest `city`, `heading` (`GPSImgDirection`),
+  and the capture date/time as outputs — wire them into the Sun nodes to light
+  the sphere the way the sun actually was when and where the photo was taken.
+  The photo itself comes out as `IMAGE` (it can replace a Load Image node).
 
 On the Sun nodes, `heading` is the direction the camera faces (degrees clockwise
 from North, matching EXIF `GPSImgDirection`); a small compass in the corner of
@@ -61,6 +66,17 @@ means **an open ComfyUI browser tab is required** for driven inputs, and the
 driving value must be one the browser can resolve (a Primitive/static source, not
 a value computed mid-run by another node). A headless/API run, or a value that
 only exists during execution, isn't reflected — use the widgets for those.
+
+### From a photo's EXIF
+
+The Photo (EXIF) node reads the metadata in the browser when you pick the
+image and writes the values onto its widgets (a status line shows what was
+found). Tags the photo doesn't carry — phones only record `GPSImgDirection`
+when the compass was active — leave their widgets untouched, so you can type a
+correction by hand. Like all driven inputs, an open browser tab is what bakes
+fresh values in; headless runs reuse the last-saved ones. JPEG, PNG (`eXIf`),
+and WebP files carry EXIF; HEIC is not supported (ComfyUI can't decode it
+either).
 
 ## Development
 

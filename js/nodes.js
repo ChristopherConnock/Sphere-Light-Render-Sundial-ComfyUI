@@ -1,8 +1,11 @@
 import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
 import { loadCities, nearestCity } from "./geo.js";
 import { computeSunAngles } from "./sun.js";
 import { nearestCityLabel } from "./status.js";
 import { attachPreview, hideWidget, hookWidgets } from "./preview.js";
+import { parseExif } from "./exif.js";
+import { parseImageValue, cityStringFor, photoStatus } from "./photo.js";
 
 const getVal = (node, name, def) => {
   const w = node.widgets?.find((w) => w.name === name);
@@ -204,6 +207,78 @@ async function setupSun(node, mode) {
   }, 700);
 }
 
+async function setupPhotoExif(node) {
+  let setStatus = () => {};
+
+  // Fetch the picked photo, parse its EXIF, and bake the values into this
+  // node's widgets. The widget names deliberately match the Sun nodes' input
+  // names: connectedInputValue() on a sphere node resolves a connection by
+  // looking up the identically named widget here. Tags absent from the file
+  // leave their widgets untouched (hand-editable fallbacks).
+  const fill = async () => {
+    const value = getStr(node, "image", "");
+    if (!value) return;
+    let parsed;
+    try {
+      const { filename, subfolder, type } = parseImageValue(value);
+      const res = await fetch(api.apiURL(
+        `/view?filename=${encodeURIComponent(filename)}` +
+        `&subfolder=${encodeURIComponent(subfolder)}&type=${type}`));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      parsed = parseExif(await res.arrayBuffer());
+    } catch (e) {
+      console.warn("[SphereLight] EXIF read failed:", e);
+      setStatus("⚠ couldn't read the image file");
+      return;
+    }
+    // Set through the widget callback so hookSourceWidgets' wrapper fires and
+    // any connected sphere node re-renders live.
+    const set = (name, v) => {
+      const w = node.widgets?.find((x) => x.name === name);
+      if (!w) return;
+      w.value = v;
+      try { w.callback?.(v, app.canvas, node); } catch (e) {}
+    };
+    let cityLabel = "";
+    if (parsed.lat != null && parsed.lng != null) {
+      set("latitude", Math.round(parsed.lat * 10000) / 10000);
+      set("longitude", Math.round(parsed.lng * 10000) / 10000);
+      try {
+        cityLabel = cityStringFor(parsed.lat, parsed.lng, await loadCities());
+        if (cityLabel) set("city", cityLabel);
+      } catch (e) {
+        console.warn("[SphereLight] cities.json failed:", e);
+      }
+    }
+    if (parsed.heading != null) set("heading", Math.round(parsed.heading * 100) / 100);
+    if (parsed.date != null) {
+      set("year", parsed.date.year);
+      set("month", parsed.date.month);
+      set("day", parsed.date.day);
+      set("hour", parsed.date.hour);
+      set("minute", parsed.date.minute);
+    }
+    setStatus(photoStatus(parsed, cityLabel));
+    node.setDirtyCanvas?.(true, true);
+  };
+
+  setTimeout(() => {
+    setStatus = addStatus(node);
+    // Parse when the photo changes (upload or picking another file) — NOT at
+    // setup: widget values persist in the workflow, so a reload re-parse
+    // would only clobber hand-corrected values.
+    const w = node.widgets?.find((x) => x.name === "image");
+    if (w) {
+      const orig = w.callback;
+      w.callback = function (...args) {
+        const r = orig ? orig.apply(this, args) : undefined;
+        fill();
+        return r;
+      };
+    }
+  }, 100);
+}
+
 app.registerExtension({
   name: "SphereLight.Nodes",
   async nodeCreated(node) {
@@ -211,6 +286,7 @@ app.registerExtension({
     if (node.comfyClass === "SphereLightManualNode") setup = setupManual(node);
     else if (node.comfyClass === "SphereLightSunCityNode") setup = setupSun(node, "city");
     else if (node.comfyClass === "SphereLightSunCoordsNode") setup = setupSun(node, "coords");
+    else if (node.comfyClass === "SphereLightPhotoExifNode") setup = setupPhotoExif(node);
     else return;
     // Re-render when an input is connected/disconnected so the preview (and
     // render_b64) immediately reflects a newly driven — or released — value, and
