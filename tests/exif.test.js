@@ -85,8 +85,21 @@ test("parseExif never throws on junk or truncated input", () => {
   }
 });
 
-test("parseExif on an EXIF-less container yields all-null", () => {
-  // A JPEG with no APP1 at all: SOI + EOI.
-  assert.deepEqual(parseExif(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]).buffer),
-                   { lat: null, lng: null, heading: null, date: null });
+test("parseExif on EXIF-less containers yields all-null (scanners reach their exits)", () => {
+  const empty = { lat: null, lng: null, heading: null, date: null };
+  // JPEG: SOI + APP0 stub (marker 0xE0, length 8, 6 payload bytes) + EOI, plus
+  // 2 trailing pad bytes so the loop's 4-byte lookahead reaches the EOI marker
+  // and actually executes the `marker === 0xd9` break (not just runs out of
+  // bytes) — no APP1 anywhere.
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x08, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x00,
+    0xff, 0xd9, 0x00, 0x00]);
+  // PNG: signature + zero-length IEND chunk (len, "IEND", CRC) — no eXIf.
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0, 0, 0, 0]);
+  // WebP: RIFF header + one non-EXIF chunk ("VP8 " with 2 payload bytes, even-padded) — no EXIF chunk.
+  const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x0e, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+    0x56, 0x50, 0x38, 0x20, 0x02, 0, 0, 0, 0xaa, 0xbb]);
+  for (const bytes of [jpeg, png, webp]) {
+    assert.deepEqual(parseExif(bytes.buffer), empty);
+  }
 });

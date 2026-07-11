@@ -219,7 +219,7 @@ class SphereLightPhotoExifNode:
         return m.digest().hex()
 
     @classmethod
-    def VALIDATE_INPUTS(cls, image, **kwargs):
+    def VALIDATE_INPUTS(cls, image):
         if not folder_paths.exists_annotated_filepath(image):
             return f"Invalid image file: {image}"
         return True
