@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseImageValue, cityStringFor, photoStatus } from "../js/photo.js";
+import { parseImageValue, cityStringFor, photoStatus, normalizeParsed } from "../js/photo.js";
 import { findCity } from "../js/geo.js";
 
 test("parseImageValue handles plain, subfolder, and annotated values", () => {
@@ -50,4 +50,55 @@ test("photoStatus flags each gap explicitly", () => {
 test("photoStatus with GPS but no city label still shows coordinates", () => {
   const s = photoStatus({ lat: 1.5, lng: -3.25, heading: 90, date: null }, "");
   assert.equal(s, "📷 1.50, -3.25 · heading 90.00° · no date/time tag");
+});
+
+// ---- normalizeParsed -------------------------------------------------------
+
+test("normalizeParsed passes valid values through (wrapping heading into [0,360))", () => {
+  const parsed = {
+    lat: 48.858222, lng: 2.2945, heading: 214.5,
+    date: { year: 2023, month: 6, day: 21, hour: 14, minute: 30 },
+  };
+  assert.deepEqual(normalizeParsed(parsed), parsed);
+  assert.equal(normalizeParsed({ ...parsed, heading: 365.5 }).heading, 5.5);
+  assert.equal(normalizeParsed({ ...parsed, heading: -45 }).heading, 315);
+  assert.equal(normalizeParsed({ ...parsed, heading: 360 }).heading, 0);
+});
+
+test("normalizeParsed rejects out-of-range coordinates as no-GPS (both nulled)", () => {
+  const base = { lat: 91.2, lng: 2.29, heading: null, date: null };
+  assert.deepEqual(normalizeParsed(base), { lat: null, lng: null, heading: null, date: null });
+  assert.equal(normalizeParsed({ ...base, lat: 48.9, lng: -180.5 }).lat, null);
+  assert.equal(normalizeParsed({ ...base, lat: 48.9, lng: -180.5 }).lng, null);
+});
+
+test("normalizeParsed rejects an invalid date wholesale", () => {
+  const d = (date) => normalizeParsed({ lat: null, lng: null, heading: null, date }).date;
+  assert.equal(d({ year: 2023, month: 99, day: 21, hour: 14, minute: 30 }), null);
+  assert.equal(d({ year: 2023, month: 6, day: 0, hour: 14, minute: 30 }), null);
+  assert.equal(d({ year: 2023, month: 6, day: 21, hour: 24, minute: 30 }), null);
+  assert.equal(d({ year: 0, month: 6, day: 21, hour: 14, minute: 30 }), null);
+  assert.deepEqual(d({ year: 1, month: 1, day: 1, hour: 0, minute: 0 }),
+                   { year: 1, month: 1, day: 1, hour: 0, minute: 0 });
+});
+
+test("normalizeParsed keeps all-null input all-null", () => {
+  const empty = { lat: null, lng: null, heading: null, date: null };
+  assert.deepEqual(normalizeParsed(empty), empty);
+});
+
+test("cityStringFor qualifier fallback chain round-trips through findCity", () => {
+  const mk = (extra) => [{ city: "Testville", lat: 10, lng: 10, tz: "UTC", population: 1, ...extra }];
+  let recs = mk({ regionCode: "TS" });
+  assert.equal(cityStringFor(10, 10, recs), "Testville, TS");
+  assert.equal(findCity("Testville, TS", recs).city, "Testville");
+  recs = mk({ countryName: "Testland" });
+  assert.equal(cityStringFor(10, 10, recs), "Testville, Testland");
+  assert.equal(findCity("Testville, Testland", recs).city, "Testville");
+  recs = mk({ country: "TL" });
+  assert.equal(cityStringFor(10, 10, recs), "Testville, TL");
+  assert.equal(findCity("Testville, TL", recs).city, "Testville");
+  recs = mk({});
+  assert.equal(cityStringFor(10, 10, recs), "Testville");
+  assert.equal(findCity("Testville", recs).city, "Testville");
 });

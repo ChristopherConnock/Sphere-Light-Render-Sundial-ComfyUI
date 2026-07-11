@@ -23,6 +23,31 @@ export function parseImageValue(value) {
   return { filename: name, subfolder, type };
 }
 
+// Sanitize what parseExif produced before it reaches any widget: real-world
+// EXIF can carry DMS minutes ≥ 60 (lat beyond ±90), headings outside 0–360,
+// or a nonsense date the "YYYY:MM:DD" shape check can't catch. Out-of-range
+// coordinates are treated as no-GPS (clamping would invent a location);
+// headings wrap (365° means 5°); an invalid date is dropped wholesale.
+export function normalizeParsed(parsed) {
+  const out = { lat: null, lng: null, heading: null, date: null };
+  if (parsed.lat != null && parsed.lng != null &&
+      Math.abs(parsed.lat) <= 90 && Math.abs(parsed.lng) <= 180) {
+    out.lat = parsed.lat;
+    out.lng = parsed.lng;
+  }
+  if (parsed.heading != null) {
+    out.heading = ((parsed.heading % 360) + 360) % 360;
+  }
+  const d = parsed.date;
+  if (d != null &&
+      d.year >= 1 && d.year <= 9999 && d.month >= 1 && d.month <= 12 &&
+      d.day >= 1 && d.day <= 31 && d.hour >= 0 && d.hour <= 23 &&
+      d.minute >= 0 && d.minute <= 59) {
+    out.date = d;
+  }
+  return out;
+}
+
 // A "City, Region" string that findCity() resolves back to the same record
 // (the Sun (City) node parses its city input as "city, qualifier").
 export function cityStringFor(lat, lng, records) {

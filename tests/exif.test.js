@@ -103,3 +103,31 @@ test("parseExif on EXIF-less containers yields all-null (scanners reach their ex
     assert.deepEqual(parseExif(bytes.buffer), empty);
   }
 });
+
+test("a zero-denominator rational in one coordinate nulls both (no half-GPS)", () => {
+  const r = parseTiff(buildTiff({
+    lat: [48, 51, 29.6], latRef: "N",
+    lng: [2, 17, 40.2], lngRef: "E", lngDen: 0,
+    heading: 214.5,
+  }));
+  assert.equal(r.lat, null);
+  assert.equal(r.lng, null);
+  assert.ok(Math.abs(r.heading - 214.5) < 1e-6); // unaffected tag still parses
+  const h = parseTiff(buildTiff({ heading: 90, headingDen: 0 }));
+  assert.equal(h.heading, null);
+});
+
+test("parseTiff rejects absurd tag counts (MAX_COUNT cap) and parseExif absorbs it", () => {
+  const u16 = (v) => [v & 255, (v >> 8) & 255];
+  const u32 = (v) => [...u16(v & 0xffff), ...u16((v >>> 16) & 0xffff)];
+  // header | IFD0 @8: 1 entry (GPS pointer -> 26) | GPS IFD @26: GPSImgDirection
+  // claiming 100000 rationals — payloadOffset must throw before looping.
+  const tiff = new Uint8Array([
+    0x49, 0x49, ...u16(42), ...u32(8),
+    ...u16(1), ...u16(0x8825), ...u16(4), ...u32(1), ...u32(26), ...u32(0),
+    ...u16(1), ...u16(0x0011), ...u16(5), ...u32(100000), ...u32(64), ...u32(0),
+  ]);
+  assert.throws(() => parseTiff(tiff), /too large/);
+  assert.deepEqual(parseExif(jpegWith(tiff).buffer),
+                   { lat: null, lng: null, heading: null, date: null });
+});
