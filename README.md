@@ -28,24 +28,31 @@ The Node renders a 1024 x 1024 image as reference for the LoRA to understand whe
 
 ## Nodes
 
-Four nodes are registered under **render/3d**:
+Three nodes are registered under **render/3d** — the node you pick *is* the mode,
+so there are no mode toggles:
 
-- **🔆 Sphere Light Render** — the original all-in-one node (mode + location toggles).
-- **🔆 Sphere Light — Manual** — set the light directly with `rotation` / `elevation` / `intensity`.
-- **🔆 Sphere Light — Sun (City)** — position the light from a real sun: pick a city, set date/time, drag the compass.
-- **🔆 Sphere Light — Sun (Coordinates)** — same, but enter `latitude` / `longitude` directly (timezone borrowed from the nearest listed city).
+- **🔆 Sphere Light — Manual** — set the light directly with `rotation` /
+  `elevation` / `intensity`.
+- **🔆 Sphere Light — Sun (City)** — position the light from the real sun: type a
+  city (e.g. `Austin, TX`, `London, UK`, `Tokyo, Japan`), set date/time and
+  `heading`.
+- **🔆 Sphere Light — Sun (Coordinates)** — same, but enter `latitude` /
+  `longitude` directly (timezone borrowed from the nearest listed city).
 
-The three split nodes have no mode toggles — the node you pick *is* the mode. The all-in-one node remains for existing workflows.
+On the Sun nodes, `heading` is the direction the camera faces (degrees clockwise
+from North, matching EXIF `GPSImgDirection`); a small compass in the corner of
+the preview shows it at a glance. A status line shows what was resolved
+(`☀ London, England`) or warns when a city isn't found. Timezone and
+daylight-saving are handled automatically. The bundled city list covers cities
+over ~15k population; rebuild it with `python tools/build_cities.py`.
 
 ### Driving inputs from the graph
 
-Every positioning parameter (heading, lat/lon, date/time, intensity, and Manual's
-rotation/elevation) can be driven by an upstream node — wire a **Primitive** (or
-any node whose value the browser can read) into the corresponding input. A
-connected input **wins** over the on-node control; disconnect it and the slider /
-compass / city search drives again, exactly as before. `heading` and `city`
-already expose input sockets (the compass/search remain the manual control); the
-other parameters are ordinary widgets you can connect to.
+Every positioning parameter (heading, city, lat/lon, date/time, intensity, and
+Manual's rotation/elevation) can be driven by an upstream node — wire a
+**Primitive** (or any node whose value the browser can read) into the
+corresponding input. A connected input **wins** over the on-node control;
+disconnect it and the widget drives again.
 
 The sphere renders client-side (Three.js), and the browser bakes the resolved
 value into the rendered image *before each run* — so the output matches the driven
@@ -55,27 +62,10 @@ driving value must be one the browser can resolve (a Primitive/static source, no
 a value computed mid-run by another node). A headless/API run, or a value that
 only exists during execution, isn't reflected — use the widgets for those.
 
-## Time of day
+## Development
 
-The node has two modes, chosen by the **Light direction** toggle at the top:
-
-- **Manual** — set the light with the `rotation` and `elevation` sliders (plus
-  `intensity`). This is the default.
-- **Date/time** — position the light from a real sun position. Only this mode's
-  inputs are shown, so the two modes never clutter each other.
-
-In **date/time** mode, pick where the location comes from with the **City /
-Coordinates** toggle — only the active one is shown, so it's always clear which
-drives the sun:
-
-- **City** — start typing a city and pick from the dropdown (e.g. `Austin, TX`,
-  `London, UK`, `Tokyo, Japan`).
-- **Coordinates** — for a place not in the bundled list (cities over ~15k
-  population), enter `latitude` / `longitude` directly; the timezone is borrowed
-  from the nearest listed city.
-
-Set the date and time, then drag the **compass** dial to the direction the camera
-faces (N at top, clockwise). A status line shows what was resolved
-(`☀ London, England`) or warns when a city isn't found. Timezone and
-daylight-saving are handled automatically. Rebuild the city list with
-`python tools/build_cities.py`.
+- JS unit tests: `npm test` (Node's built-in runner over `tests/`).
+- Python node tests: run the scripts in `tools/` (`test_decode.py`,
+  `test_new_nodes.py`, `test_comfy_load.py`).
+- `js/` is the `WEB_DIRECTORY` ComfyUI serves — every `.js` file in it is
+  auto-imported by the browser, so only runtime modules live there.

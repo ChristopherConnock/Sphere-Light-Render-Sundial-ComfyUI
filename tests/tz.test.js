@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { zonedWallTimeToUTC } from "./tz.js";
+import { zonedWallTimeToUTC } from "../js/tz.js";
 
 test("summer wall time uses DST offset (EDT = UTC-4)", () => {
   const d = zonedWallTimeToUTC(2023, 7, 4, 12, 0, "America/New_York");

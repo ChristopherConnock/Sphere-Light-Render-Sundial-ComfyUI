@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeSunAngles, normalizeDeg180 } from "./sun.js";
+import { computeSunAngles, normalizeDeg180 } from "../js/sun.js";
 
 const FIX = [
   { city: "Austin", regionCode: "TX", region: "Texas", country: "US", countryName: "United States", lat: 30.27, lng: -97.74, tz: "America/Chicago", population: 961855 },

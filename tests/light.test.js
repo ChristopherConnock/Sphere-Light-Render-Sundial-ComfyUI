@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lightPosition } from "./light.js";
+import { lightPosition } from "../js/light.js";
 
 test("noon-ish high sun sits mostly above (+Y dominates)", () => {
   const p = lightPosition(0, 90);

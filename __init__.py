@@ -17,7 +17,7 @@ def decode_render_b64(render_b64):
     img = None
     if render_b64 and render_b64.startswith("data:image"):
         if len(render_b64) > MAX_B64_CHARS:
-            print(f"[SphereLightNode] render_b64 too large "
+            print(f"[SphereLight] render_b64 too large "
                   f"({len(render_b64)} chars); using gray fallback")
         else:
             try:
@@ -30,10 +30,10 @@ def decode_render_b64(render_b64):
                 img = probe.convert("RGB").resize(
                     (TARGET_SIZE, TARGET_SIZE), Image.LANCZOS)
             except Exception as e:
-                print(f"[SphereLightNode] Error decoding render_b64: {e}")
+                print(f"[SphereLight] Error decoding render_b64: {e}")
                 img = None
     else:
-        print("[SphereLightNode] no render_b64 provided; using gray fallback")
+        print("[SphereLight] no render_b64 provided; using gray fallback")
 
     if img is None:
         img = Image.new("RGB", (TARGET_SIZE, TARGET_SIZE), FALLBACK_GRAY)
@@ -41,55 +41,23 @@ def decode_render_b64(render_b64):
     arr = np.array(img).astype(np.float32) / 255.0
     return torch.from_numpy(arr).unsqueeze(0)
 
-class SphereLightNode:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "sun_mode":  (["manual", "date/time"], {"default": "manual"}),
-                "rotation":  ("FLOAT", {"default": 0.0,  "min": -180, "max": 180, "step": 1,   "display": "slider"}),
-                "elevation": ("FLOAT", {"default": 45.0, "min": 5,    "max": 85,  "step": 1,   "display": "slider"}),
-                "intensity": ("FLOAT", {"default": 1.5,  "min": 0.2,  "max": 3.0, "step": 0.1, "display": "slider"}),
-                "location_mode": (["city", "coords"], {"default": "city"}),
-                "location":  ("STRING", {"default": "Austin, TX", "multiline": False}),
-                "latitude":  ("FLOAT", {"default": 0.0, "min": -90.0,  "max": 90.0,  "step": 0.0001}),
-                "longitude": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.0001}),
-                "year":      ("INT", {"default": 2025, "min": 1, "max": 9999}),
-                "month":     ("INT", {"default": 6,  "min": 1,  "max": 12}),
-                "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
-                "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
-                "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
-                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01, "display": "slider"}),
-                "render_b64": ("STRING", {"default": "", "multiline": False}),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("render",)
-    FUNCTION = "execute"
-    CATEGORY = "render/3d"
-    OUTPUT_NODE = False
-
-    def execute(self, sun_mode, rotation, elevation, intensity, location_mode,
-                location, latitude, longitude, year, month, day, hour, minute,
-                heading, render_b64):
-        # Positioning params (sun_mode, rotation..heading, location_mode,
-        # latitude/longitude) are consumed client-side in js/sphere_widget.js;
-        # the server only needs render_b64. They appear here because ComfyUI
-        # passes every declared input.
-        tensor = decode_render_b64(render_b64)
-        return (tensor,)
-
 
 class SphereLightManualNode:
+    DESCRIPTION = ("Renders a lit reference sphere for the Sun-Direction LoRA. "
+                   "Set the light direction manually with rotation/elevation.")
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "rotation":  ("FLOAT", {"default": 0.0,  "min": -180, "max": 180, "step": 1,   "display": "slider"}),
-                "elevation": ("FLOAT", {"default": 45.0, "min": 5,    "max": 85,  "step": 1,   "display": "slider"}),
-                "intensity": ("FLOAT", {"default": 1.5,  "min": 0.2,  "max": 3.0, "step": 0.1, "display": "slider"}),
-                "render_b64": ("STRING", {"default": "", "multiline": False}),
+                "rotation":  ("FLOAT", {"default": 0.0,  "min": -180, "max": 180, "step": 1,   "display": "slider",
+                                        "tooltip": "Light azimuth around the sphere, in degrees."}),
+                "elevation": ("FLOAT", {"default": 45.0, "min": 5,    "max": 85,  "step": 1,   "display": "slider",
+                                        "tooltip": "Light height above the horizon, in degrees."}),
+                "intensity": ("FLOAT", {"default": 1.5,  "min": 0.2,  "max": 3.0, "step": 0.1, "display": "slider",
+                                        "tooltip": "Light strength."}),
+                "render_b64": ("STRING", {"default": "", "multiline": False,
+                                          "tooltip": "Internal: the browser-rendered sphere image (managed automatically)."}),
             }
         }
     RETURN_TYPES = ("IMAGE",)
@@ -106,19 +74,28 @@ class SphereLightManualNode:
 
 
 class SphereLightSunCityNode:
+    DESCRIPTION = ("Renders a lit reference sphere for the Sun-Direction LoRA. "
+                   "The light follows the real sun for a city + date/time; "
+                   "heading turns the camera (compass shown on the render).")
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "intensity": ("FLOAT", {"default": 1.5, "min": 0.2, "max": 3.0, "step": 0.1, "display": "slider"}),
-                "city":      ("STRING", {"default": "Austin, TX", "multiline": False}),
+                "intensity": ("FLOAT", {"default": 1.5, "min": 0.2, "max": 3.0, "step": 0.1, "display": "slider",
+                                        "tooltip": "Light strength."}),
+                "city":      ("STRING", {"default": "Austin, TX", "multiline": False,
+                                         "tooltip": "City name, optionally with region/country (e.g. 'Austin, TX', 'London, UK')."}),
                 "year":      ("INT", {"default": 2025, "min": 1, "max": 9999}),
                 "month":     ("INT", {"default": 6,  "min": 1,  "max": 12}),
                 "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
-                "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
+                "hour":      ("INT", {"default": 12, "min": 0,  "max": 23,
+                                      "tooltip": "Local time at the chosen city (DST handled automatically)."}),
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
-                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01, "display": "slider"}),
-                "render_b64": ("STRING", {"default": "", "multiline": False}),
+                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01, "display": "slider",
+                                        "tooltip": "Camera facing, degrees clockwise from North (matches EXIF GPSImgDirection)."}),
+                "render_b64": ("STRING", {"default": "", "multiline": False,
+                                          "tooltip": "Internal: the browser-rendered sphere image (managed automatically)."}),
             }
         }
     RETURN_TYPES = ("IMAGE",)
@@ -128,28 +105,37 @@ class SphereLightSunCityNode:
     OUTPUT_NODE = False
 
     def execute(self, intensity, city, year, month, day, hour, minute, heading, render_b64):
-        # city/heading are consumed client-side (js/nodes.js) — native
-        # serialization anchors for the compass/search DOM overlays, and read
-        # from an upstream connection when driven. The server only needs
-        # render_b64 (the browser bakes any driven value into it before the run).
+        # city/heading and the date/time are consumed client-side (js/nodes.js),
+        # and read from an upstream connection when driven. The server only needs
+        # render_b64 (the browser bakes the resolved values into it at queue time).
         return (decode_render_b64(render_b64),)
 
 
 class SphereLightSunCoordsNode:
+    DESCRIPTION = ("Renders a lit reference sphere for the Sun-Direction LoRA. "
+                   "The light follows the real sun for a latitude/longitude + "
+                   "date/time; heading turns the camera (compass shown on the render).")
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "intensity": ("FLOAT", {"default": 1.5, "min": 0.2, "max": 3.0, "step": 0.1, "display": "slider"}),
-                "latitude":  ("FLOAT", {"default": 0.0, "min": -90.0,  "max": 90.0,  "step": 0.0001}),
-                "longitude": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.0001}),
+                "intensity": ("FLOAT", {"default": 1.5, "min": 0.2, "max": 3.0, "step": 0.1, "display": "slider",
+                                        "tooltip": "Light strength."}),
+                "latitude":  ("FLOAT", {"default": 0.0, "min": -90.0,  "max": 90.0,  "step": 0.0001,
+                                        "tooltip": "Degrees north (negative = south)."}),
+                "longitude": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.0001,
+                                        "tooltip": "Degrees east (negative = west)."}),
                 "year":      ("INT", {"default": 2025, "min": 1, "max": 9999}),
                 "month":     ("INT", {"default": 6,  "min": 1,  "max": 12}),
                 "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
-                "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
+                "hour":      ("INT", {"default": 12, "min": 0,  "max": 23,
+                                      "tooltip": "Local time at the location (timezone borrowed from the nearest listed city)."}),
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
-                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01, "display": "slider"}),
-                "render_b64": ("STRING", {"default": "", "multiline": False}),
+                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01, "display": "slider",
+                                        "tooltip": "Camera facing, degrees clockwise from North (matches EXIF GPSImgDirection)."}),
+                "render_b64": ("STRING", {"default": "", "multiline": False,
+                                          "tooltip": "Internal: the browser-rendered sphere image (managed automatically)."}),
             }
         }
     RETURN_TYPES = ("IMAGE",)
@@ -159,21 +145,18 @@ class SphereLightSunCoordsNode:
     OUTPUT_NODE = False
 
     def execute(self, intensity, latitude, longitude, year, month, day, hour, minute, heading, render_b64):
-        # heading is consumed client-side (js/nodes.js) — a native serialization
-        # anchor for the compass DOM overlay, and read from an upstream connection
-        # when driven. The server only needs render_b64 (the browser bakes any
-        # driven value into it before the run).
+        # All positioning params are consumed client-side (js/nodes.js), and read
+        # from an upstream connection when driven. The server only needs
+        # render_b64 (the browser bakes the resolved values into it at queue time).
         return (decode_render_b64(render_b64),)
 
 
 NODE_CLASS_MAPPINGS = {
-    "SphereLightNode": SphereLightNode,
     "SphereLightManualNode": SphereLightManualNode,
     "SphereLightSunCityNode": SphereLightSunCityNode,
     "SphereLightSunCoordsNode": SphereLightSunCoordsNode,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "SphereLightNode": "🔆 Sphere Light Render",
     "SphereLightManualNode": "🔆 Sphere Light — Manual",
     "SphereLightSunCityNode": "🔆 Sphere Light — Sun (City)",
     "SphereLightSunCoordsNode": "🔆 Sphere Light — Sun (Coordinates)",

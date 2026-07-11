@@ -29,8 +29,8 @@ sys.modules[name] = mod
 spec.loader.exec_module(mod)   # must not raise ModuleNotFoundError: render_bridge
 
 got = set(mod.NODE_CLASS_MAPPINGS)
-want = {"SphereLightNode", "SphereLightManualNode",
+want = {"SphereLightManualNode",
         "SphereLightSunCityNode", "SphereLightSunCoordsNode"}
-assert want <= got, f"missing nodes under ComfyUI-style load: {want - got}"
+assert want == got, f"node set mismatch under ComfyUI-style load: {want ^ got}"
 
 print("test_comfy_load: OK")

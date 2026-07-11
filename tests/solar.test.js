@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sunPosition } from "./solar.js";
+import { sunPosition } from "../js/solar.js";
 
 test("near-overhead at solstice on the Tropic of Cancer", () => {
   // Jun 21 2023 12:00 UTC, lat 23.44 (~obliquity), lng 0 -> sun almost overhead

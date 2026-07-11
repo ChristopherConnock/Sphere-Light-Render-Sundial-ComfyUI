@@ -38,40 +38,6 @@ export function findCity(query, records) {
   return matches[0];
 }
 
-// Ranked autocomplete suggestions for a partial "city" or "city, qualifier"
-// query. Exact name beats prefix beats substring; ties break by population.
-// Pure — the UI layer renders whatever this returns.
-export function suggestCities(query, records, limit = 8) {
-  const parts = (query || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const cityQ = parts[0] || "";
-  const qualQ = parts[1] || "";
-  if (!cityQ) return [];
-  const aliasQ = QUALIFIER_ALIASES[qualQ] || qualQ;
-
-  const scored = [];
-  for (const r of records) {
-    const name = r.city.toLowerCase();
-    let score;
-    if (name === cityQ) score = 0;
-    else if (name.startsWith(cityQ)) score = 1;
-    else if (name.includes(cityQ)) score = 2;
-    else continue;
-    if (qualQ) {
-      const rc = (r.regionCode || "").toLowerCase();
-      const rg = (r.region || "").toLowerCase();
-      const co = (r.country || "").toLowerCase();
-      const cn = (r.countryName || "").toLowerCase();
-      const ok =
-        rc.startsWith(qualQ) || rg.startsWith(qualQ) || rg.startsWith(aliasQ) ||
-        co === qualQ || cn.startsWith(qualQ) || cn.startsWith(aliasQ);
-      if (!ok) continue;
-    }
-    scored.push({ r, score });
-  }
-  scored.sort((a, b) => a.score - b.score || (b.r.population || 0) - (a.r.population || 0));
-  return scored.slice(0, limit).map((s) => s.r);
-}
-
 // Closest record to a lat/lng, by squared degree distance. Used to borrow a
 // timezone for manually-entered coordinates that aren't a listed city.
 export function nearestCity(lat, lng, records) {

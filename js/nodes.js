@@ -1,8 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { loadCities, nearestCity } from "./geo.js";
 import { computeSunAngles } from "./sun.js";
-import { createLocationSearch, formatLabel } from "./location_search.js";
-import { createCompass } from "./compass.js";
 import { nearestCityLabel } from "./status.js";
 import { attachPreview, hideWidget, hookWidgets } from "./preview.js";
 
@@ -68,14 +66,13 @@ function hookConnectedSources(node) {
   }
 }
 
-// attachPreview() pushes the `_3d_preview` widget onto node.widgets before any
-// of the DOM widgets below are created. TOP_WIDGETS_H() (preview.js) sums row
+// attachPreview() pushes the `_3d_preview` widget onto node.widgets before the
+// status widget below is created. TOP_WIDGETS_H() (preview.js) sums row
 // heights only up to the first `_3d_preview` it finds, and LiteGraph draws
 // widgets in array order — so a widget appended *after* `_3d_preview` is both
 // left out of the height sum and drawn below/behind the preview square.
 // Reinsert each new widget immediately before `_3d_preview` so it lands in the
-// top (input) area, mirroring the splice sphere_widget.js does for its own
-// DOM widgets (compass/location_search) relative to the same preview widget.
+// top (input) area.
 function moveBeforePreview(node, widget) {
   const ws = node.widgets;
   if (!ws || !widget) return;
@@ -135,11 +132,9 @@ async function setupManual(node) {
 
 async function setupSun(node, mode) {
   let cities = null;
-  let compass = null;
-  let search = null;
   let setStatus = () => {};
 
-  // A connected input wins over the widget/overlay; else they drive (as before).
+  // A connected input wins over the widget; else the widget drives (as before).
   const getAngles = () => {
     const num = (name, d) => {
       const c = connectedInputValue(node, name);
@@ -152,8 +147,7 @@ async function setupSun(node, mode) {
     const intensity = num("intensity", 1.5);
     if (!cities) { setStatus(""); return { az: 0, el: 45, intensity }; }
     const heading = num("heading", 0);
-    if (compass) compass.setValue(heading);   // dial reflects the value in use
-                                               // (the widget's, or a driven one)
+    node._slHeading = heading;   // preview.js draws the passive compass overlay
     const base = {
       year: num("year", 2025), month: num("month", 6),
       day: num("day", 21), hour: num("hour", 12),
@@ -191,60 +185,13 @@ async function setupSun(node, mode) {
   loadCities().then((c) => { cities = c; render(); })
               .catch((e) => console.warn("[SphereLight] cities.json failed:", e));
 
+  const watched = mode === "city"
+    ? ["intensity", "city", "year", "month", "day", "hour", "minute", "heading"]
+    : ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute", "heading"];
+
   setTimeout(() => {
     hideWidget(node, "render_b64");
-
-    // Compass (native-anchor pattern, matching the kitchen-sink node in
-    // sphere_widget.js): the hidden native `heading` widget is the value
-    // that gets serialized into widgets_values; the compass DOM overlay
-    // seeds from it and writes back into it on every change. A serialize:true
-    // DOM widget was tried first but does not survive save/reload — it's
-    // created in this post-nodeCreated setTimeout, so it's absent when
-    // ComfyUI replays widgets_values on load.
-    const headingW = node.widgets.find((w) => w.name === "heading");
-    compass = createCompass({
-      // No label/number: the native `heading` slider above is the labelled,
-      // connectable field; the dial is just its visual companion.
-      showNumber: false,
-      initial:    parseFloat(headingW.value) || 0,
-      onChange:   (deg) => { headingW.value = deg; scheduleRender(); },
-    });
-    node._slCompass = compass;
-    const compassW = node.addDOMWidget("compass", "compass", compass.element, {
-      serialize: false, margin: 0,
-      getHeight: () => 72, getMinHeight: () => 72, getMaxHeight: () => 72,
-    });
-    compassW._slRowH = 72;
-    moveBeforePreview(node, compassW);
-    // Keep the native `heading` widget VISIBLE (not hidden) so it's a normal
-    // drop target — you connect it by dragging a link onto it, exactly like the
-    // other params. (A hidden widget exposes no hoverable input.) The compass
-    // still drives it when nothing is connected, and reflects the driven value.
-
-    if (mode === "city") {
-      // City search: same native-anchor pattern, mirroring `location_search`
-      // in sphere_widget.js. The DOM widget name ("city_search") is distinct
-      // from the native anchor ("city") it seeds from and writes into.
-      const cityW = node.widgets.find((w) => w.name === "city");
-      search = createLocationSearch({
-        label:      "city",
-        getRecords: () => cities || [],
-        initial:    String(cityW.value ?? ""),
-        onSelect:   (rec) => { cityW.value = formatLabel(rec); render(); },
-        onText:     (t)   => { cityW.value = t; scheduleRender(); },
-      });
-      node._slSearch = search;
-      const searchW = node.addDOMWidget("city_search", "city_search", search.element, {
-        serialize: false, margin: 0,
-        getHeight: () => 32, getMinHeight: () => 32, getMaxHeight: () => 32,
-      });
-      searchW._slRowH = 32;
-      moveBeforePreview(node, searchW);   // city stays visible as a drop target
-      hookWidgets(node, ["intensity", "city", "year", "month", "day", "hour", "minute", "heading"], scheduleRender);
-    } else {
-      hookWidgets(node, ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute", "heading"], scheduleRender);
-    }
-
+    hookWidgets(node, watched, scheduleRender);
     setStatus = addStatus(node);
     render();
     const w = Math.max(node.size?.[0] || 320, 300);
@@ -258,22 +205,7 @@ async function setupSun(node, mode) {
 }
 
 app.registerExtension({
-  name: "SphereLightSplitNodes",
-  async setup() {
-    // Before the prompt is built for a run, refresh every sphere node's
-    // render_b64 from its CURRENT values (widgets + connected inputs) so a
-    // graph-driven value (e.g. a Primitive, or an incrementing animation) lands
-    // in the serialized image for THIS run — no server round-trip needed.
-    const orig = app.graphToPrompt.bind(app);
-    app.graphToPrompt = async function (...args) {
-      for (const n of app.graph?._nodes || []) {
-        if (n._slRender) {
-          try { n._slRender(); } catch (e) { console.warn("[SphereLight] pre-queue render failed:", e); }
-        }
-      }
-      return orig(...args);
-    };
-  },
+  name: "SphereLight.Nodes",
   async nodeCreated(node) {
     let setup;
     if (node.comfyClass === "SphereLightManualNode") setup = setupManual(node);

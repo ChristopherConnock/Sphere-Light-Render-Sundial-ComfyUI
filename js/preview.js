@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { lightPosition } from "./light.js";
+import { drawCompass } from "./compass.js";
 
 // Vendored locally (was cdnjs) so the node works offline / air-gapped and
 // isn't exposed to a third-party CDN being compromised. Resolved relative to
@@ -103,16 +104,6 @@ export function hookWidgets(node, names, onChange) {
   }
 }
 
-export function addSerializedDOMWidget(node, { name, element, height, getValue, setValue }) {
-  const w = node.addDOMWidget(name, name, element, {
-    serialize: true, getValue, setValue,
-    getHeight: () => height, getMinHeight: () => height, getMaxHeight: () => height,
-    margin: 0,
-  });
-  if (w) { w.serializeValue = () => getValue(); w._slRowH = height; }
-  return w;
-}
-
 export async function attachPreview(node, getAngles) {
   await loadThree();
   const ctx = buildScene();
@@ -166,6 +157,14 @@ export async function attachPreview(node, getAngles) {
       ctx2d.roundRect(x, y, side, side, 8);
       ctx2d.clip();
       ctx2d.drawImage(node._slCanvas, x, y, side, side);
+      // Passive heading indicator in the preview's upper-right corner (sun
+      // nodes set _slHeading on every render). Drawn on the node canvas, not
+      // the WebGL render, so it never appears in the output image.
+      if (Number.isFinite(node._slHeading)) {
+        const r = Math.min(Math.max(side * 0.1, 14), 36);
+        const pad = r * 0.45;
+        drawCompass(ctx2d, x + side - pad - r, y + pad + r, r, node._slHeading);
+      }
       ctx2d.restore();
     },
   };
@@ -178,8 +177,6 @@ export async function attachPreview(node, getAngles) {
     // context itself (browsers cap ~16), so many nodes don't exhaust them.
     this._slCtx?.renderer?.dispose();
     this._slCtx?.renderer?.forceContextLoss?.();
-    this._slSearch?.destroy?.();   // removes the body-attached suggestion menu
-    this._slCompass?.destroy?.();
     this._slCtx    = null;
     this._slCanvas = null;
   };
@@ -198,6 +195,16 @@ export async function attachPreview(node, getAngles) {
     app.graph.setDirtyCanvas(true, false);
     previewWidget.triggerDraw?.();
   };
+
+  // When the prompt is built for a run, re-render from the CURRENT values
+  // (widgets + connected inputs) so a graph-driven value lands in the
+  // serialized image for THIS run. serializeValue is the sanctioned per-widget
+  // hook — the frontend awaits it in graphToPrompt (core webcam/load3d nodes
+  // bake their captures the same way).
+  {
+    const wb = node.widgets?.find((w) => w.name === "render_b64");
+    if (wb) wb.serializeValue = () => { render(); return wb.value; };
+  }
 
   let debTimer = null;
   const scheduleRender = () => { clearTimeout(debTimer); debTimer = setTimeout(render, 80); };

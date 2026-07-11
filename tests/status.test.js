@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { haversineKm, nearestCityLabel } from "./status.js";
+import { haversineKm, nearestCityLabel } from "../js/status.js";
 
 const FIX = [
   { city: "Austin", regionCode: "TX", region: "Texas", country: "US", lat: 30.27, lng: -97.74, tz: "America/Chicago" },

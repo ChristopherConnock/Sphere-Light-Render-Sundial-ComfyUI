@@ -1,0 +1,13 @@
+[project]
+name = "sphere-light-render-comfyui"
+description = "Renders a lit reference sphere (manual sun angles, or the real sun for a city/coordinates + date/time) to steer the Sun-Direction LoRA for Flux 2 Klein 9B."
+version = "1.0.0"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/eric-venti-seeds/Sphere-Light-Render-ComfyUI"
+
+[tool.comfy]
+PublisherId = "eric-venti-seeds"
+DisplayName = "Sphere Light Render"
