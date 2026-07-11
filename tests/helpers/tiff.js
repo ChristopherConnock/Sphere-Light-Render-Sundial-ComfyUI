@@ -53,3 +53,35 @@ export function buildTiff(opts = {}) {
   out.push(...data);
   return new Uint8Array(out);
 }
+
+// ---- container wrappers ----------------------------------------------------
+
+const chars = (s) => [...s].map((c) => c.charCodeAt(0));
+
+// The raw JPEG APP1 segment (marker + length + "Exif\0\0" + TIFF) — also used
+// to splice EXIF into a real photo for the e2e fixture.
+export function app1Segment(tiff) {
+  const payload = [...chars("Exif"), 0, 0, ...tiff];
+  const len = payload.length + 2; // length field counts itself
+  return [0xff, 0xe1, (len >> 8) & 255, len & 255, ...payload];
+}
+
+export function jpegWith(tiff) {
+  return new Uint8Array([0xff, 0xd8, ...app1Segment(tiff), 0xff, 0xd9]);
+}
+
+export function pngWith(tiff) {
+  const be32 = (v) => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+  return new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ...be32(tiff.length), ...chars("eXIf"), ...tiff, 0, 0, 0, 0, // CRC unchecked
+    ...be32(0), ...chars("IEND"), 0, 0, 0, 0,
+  ]);
+}
+
+export function webpWith(tiff) {
+  const le32 = (v) => [v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255];
+  const chunk = [...chars("EXIF"), ...le32(tiff.length), ...tiff];
+  if (tiff.length & 1) chunk.push(0); // chunks are even-padded
+  return new Uint8Array([...chars("RIFF"), ...le32(4 + chunk.length), ...chars("WEBP"), ...chunk]);
+}

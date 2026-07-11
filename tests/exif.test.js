@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dmsToDeg, parseTiff } from "../js/exif.js";
-import { buildTiff } from "./helpers/tiff.js";
+import { parseExif, findExifPayload, dmsToDeg, parseTiff } from "../js/exif.js";
+import { buildTiff, jpegWith, pngWith, webpWith } from "./helpers/tiff.js";
 
 test("dmsToDeg converts DMS and applies hemisphere sign", () => {
   assert.ok(Math.abs(dmsToDeg([48, 51, 29.6], "N") - 48.858222) < 1e-4);
@@ -51,4 +51,42 @@ test("missing tags yield nulls, present ones still parse", () => {
 
 test("parseTiff throws on non-TIFF bytes (caller catches)", () => {
   assert.throws(() => parseTiff(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])));
+});
+
+test("findExifPayload locates the TIFF block in JPEG, PNG, and WebP", () => {
+  const tiff = buildTiff(PARIS);
+  for (const wrap of [jpegWith, pngWith, webpWith]) {
+    const found = findExifPayload(wrap(tiff));
+    assert.ok(found, wrap.name);
+    assert.deepEqual([...found.subarray(0, 4)], [...tiff.subarray(0, 4)], wrap.name);
+  }
+});
+
+test("parseExif end-to-end on each container", () => {
+  const tiff = buildTiff(PARIS);
+  for (const wrap of [jpegWith, pngWith, webpWith]) {
+    const r = parseExif(wrap(tiff).buffer);
+    assert.ok(Math.abs(r.lat - 48.858222) < 1e-4, wrap.name);
+    assert.ok(Math.abs(r.heading - 214.5) < 1e-6, wrap.name);
+    assert.equal(r.date.year, 2023, wrap.name);
+  }
+});
+
+test("parseExif never throws on junk or truncated input", () => {
+  const empty = { lat: null, lng: null, heading: null, date: null };
+  const truncated = jpegWith(buildTiff(PARIS)).slice(0, 24);
+  for (const buf of [
+    new ArrayBuffer(0),
+    new Uint8Array([1, 2, 3]).buffer,
+    truncated.buffer.slice(truncated.byteOffset, truncated.byteOffset + truncated.byteLength),
+    new Uint8Array(64).buffer, // zeros: no known container signature
+  ]) {
+    assert.deepEqual(parseExif(buf), empty);
+  }
+});
+
+test("parseExif on an EXIF-less container yields all-null", () => {
+  // A JPEG with no APP1 at all: SOI + EOI.
+  assert.deepEqual(parseExif(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]).buffer),
+                   { lat: null, lng: null, heading: null, date: null });
 });

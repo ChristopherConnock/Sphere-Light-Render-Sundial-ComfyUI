@@ -112,3 +112,79 @@ export function parseTiff(bytes) {
   }
   return out;
 }
+
+// ---- container scan: find the TIFF/EXIF payload in a photo file ------------
+
+// JPEG: scan APP1 segments for an "Exif\0\0" payload.
+function tiffFromJpeg(bytes, dv) {
+  let i = 2;
+  while (i + 4 <= bytes.length) {
+    if (bytes[i] !== 0xff) break;
+    const marker = bytes[i + 1];
+    if (marker === 0xd9 || marker === 0xda) break; // EOI / start of image data
+    const len = dv.getUint16(i + 2); // includes the 2 length bytes
+    if (marker === 0xe1 && len >= 8 &&
+        String.fromCharCode(...bytes.subarray(i + 4, i + 10)) === "Exif\0\0") {
+      return bytes.subarray(i + 10, i + 2 + len);
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+
+const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function tiffFromPng(bytes, dv) {
+  let i = 8;
+  while (i + 8 <= bytes.length) {
+    const len = dv.getUint32(i); // big-endian
+    const type = String.fromCharCode(...bytes.subarray(i + 4, i + 8));
+    if (type === "eXIf") return bytes.subarray(i + 8, i + 8 + len);
+    if (type === "IEND") break;
+    i += 12 + len; // length + type + data + CRC
+  }
+  return null;
+}
+
+function tiffFromWebp(bytes, dv) {
+  let i = 12;
+  while (i + 8 <= bytes.length) {
+    const fourcc = String.fromCharCode(...bytes.subarray(i, i + 4));
+    const len = dv.getUint32(i + 4, true); // little-endian
+    if (fourcc === "EXIF") {
+      let p = bytes.subarray(i + 8, i + 8 + len);
+      // Some writers keep the JPEG-style "Exif\0\0" prefix inside the chunk.
+      if (p.length >= 6 && String.fromCharCode(...p.subarray(0, 6)) === "Exif\0\0") {
+        p = p.subarray(6);
+      }
+      return p;
+    }
+    i += 8 + len + (len & 1); // chunks are even-padded
+  }
+  return null;
+}
+
+// Locate the TIFF block inside a JPEG / PNG / WebP file; null when absent.
+export function findExifPayload(bytes) {
+  if (bytes.length < 12) return null;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (dv.getUint16(0) === 0xffd8) return tiffFromJpeg(bytes, dv);
+  if (PNG_SIG.every((b, i) => bytes[i] === b)) return tiffFromPng(bytes, dv);
+  if (String.fromCharCode(...bytes.subarray(0, 4)) === "RIFF" &&
+      String.fromCharCode(...bytes.subarray(8, 12)) === "WEBP") {
+    return tiffFromWebp(bytes, dv);
+  }
+  return null;
+}
+
+// The one entry point: photo file bytes in, { lat, lng, heading, date } out.
+// Never throws — malformed or absent EXIF yields all-null.
+export function parseExif(arrayBuffer) {
+  const empty = { lat: null, lng: null, heading: null, date: null };
+  try {
+    const tiff = findExifPayload(new Uint8Array(arrayBuffer));
+    return tiff ? parseTiff(tiff) : empty;
+  } catch (e) {
+    return empty;
+  }
+}
