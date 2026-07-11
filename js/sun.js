@@ -51,8 +51,15 @@ export function computeSunAngles(params, records) {
   const belowHorizon = altitude <= 0;
   if (belowHorizon) label += ` — sun below horizon`;
 
+  // Scene mapping: lightPosition() measures azimuth from +z, and the camera
+  // also sits at +z — so scene rotation 0 is light BEHIND the camera (frontal)
+  // and ±180 is backlight. The sun's bearing relative to the camera facing is
+  // (azimuth - heading), where 0 means dead ahead — the mirror image. Mapping
+  // through 180 - rel makes the render physically match a camera at `heading`:
+  // face away from the sun -> frontal light; shoot into it -> backlight; sun to
+  // your right -> light from screen right.
   return {
-    rotation: normalizeDeg180(azimuth - heading),
+    rotation: normalizeDeg180(180 - (azimuth - heading)),
     elevation: belowHorizon ? 0 : altitude,
     belowHorizon,
     altitude,
