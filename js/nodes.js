@@ -5,7 +5,7 @@ import { computeSunAngles } from "./sun.js";
 import { nearestCityLabel } from "./status.js";
 import { attachPreview, hideWidget, hookWidgets } from "./preview.js";
 import { parseExif } from "./exif.js";
-import { parseImageValue, cityStringFor, photoStatus } from "./photo.js";
+import { parseImageValue, cityStringFor, photoStatus, normalizeParsed } from "./photo.js";
 
 const getVal = (node, name, def) => {
   const w = node.widgets?.find((w) => w.name === name);
@@ -32,11 +32,53 @@ function connectedInputValue(node, name) {
   if (!link) return undefined;
   const origin = app.graph.getNodeById?.(link.origin_id);
   if (!origin) return undefined;
-  // A PrimitiveNode adopts the target widget's name; other simple sources keep
-  // their value in their first widget. Match by name, else fall back to it.
-  const w = (origin.widgets || []).find((w) => w.name === name)
-         || (origin.widgets || [])[0];
+  // A PrimitiveNode adopts the target widget's name (older ones keep "value");
+  // other simple sources hold theirs in their only widget. Never fall back to
+  // "the first widget" of a multi-widget source — on the Photo (EXIF) node that
+  // would silently read the image filename for an input with no matching name.
+  const ws = origin.widgets || [];
+  const w = ws.find((x) => x.name === name)
+         || ws.find((x) => x.name === "value")
+         || (ws.length === 1 ? ws[0] : undefined);
   return w ? w.value : undefined;
+}
+
+// While an input is connected, its on-node field mirrors the driven value —
+// otherwise the field keeps showing a stale local number (e.g. 0.0000 under a
+// driven latitude). Direct value write, no callback: the widget callbacks are
+// wrapped to re-render, and mirroring happens DURING a render.
+function mirrorWidget(node, name, v) {
+  const w = node.widgets?.find((x) => x.name === name);
+  if (!w || w.value === v) return;
+  w.value = v;
+  node.setDirtyCanvas?.(true, false);
+}
+
+// Shared value resolvers: a connected input wins over the widget (and mirrors
+// into it); else the widget drives, as before. An unparseable driven number
+// (e.g. a mis-wired string) falls back to the widget instead of going NaN.
+function makeResolvers(node) {
+  const num = (name, d) => {
+    const c = connectedInputValue(node, name);
+    if (c != null) {
+      const v = parseFloat(c);
+      if (Number.isFinite(v)) {
+        mirrorWidget(node, name, v);
+        return v;
+      }
+    }
+    return getVal(node, name, d);
+  };
+  const str = (name, d) => {
+    const c = connectedInputValue(node, name);
+    if (c != null) {
+      const v = String(c);
+      mirrorWidget(node, name, v);
+      return v;
+    }
+    return getStr(node, name, d);
+  };
+  return { num, str };
 }
 
 // A connected value only re-renders on connect and at queue time. So dragging
@@ -104,12 +146,8 @@ function addStatus(node) {
 }
 
 async function setupManual(node) {
-  // A connected input wins over the widget; else the widget drives (as before).
+  const { num } = makeResolvers(node);
   const getAngles = () => {
-    const num = (name, d) => {
-      const c = connectedInputValue(node, name);
-      return c != null ? parseFloat(c) : getVal(node, name, d);
-    };
     return {
       az: num("rotation", 0),
       el: num("elevation", 45),
@@ -137,16 +175,8 @@ async function setupSun(node, mode) {
   let cities = null;
   let setStatus = () => {};
 
-  // A connected input wins over the widget; else the widget drives (as before).
+  const { num, str } = makeResolvers(node);
   const getAngles = () => {
-    const num = (name, d) => {
-      const c = connectedInputValue(node, name);
-      return c != null ? parseFloat(c) : getVal(node, name, d);
-    };
-    const str = (name, d) => {
-      const c = connectedInputValue(node, name);
-      return c != null ? String(c) : getStr(node, name, d);
-    };
     const intensity = num("intensity", 1.5);
     if (!cities) { setStatus(""); return { az: 0, el: 45, intensity }; }
     const heading = num("heading", 0);
@@ -215,9 +245,13 @@ async function setupPhotoExif(node) {
   // names: connectedInputValue() on a sphere node resolves a connection by
   // looking up the identically named widget here. Tags absent from the file
   // leave their widgets untouched (hand-editable fallbacks).
+  // Two rapid image picks interleave two async fills; the sequence token makes
+  // a superseded fill drop out instead of stamping stale values last.
+  let fillSeq = 0;
   const fill = async () => {
     const value = getStr(node, "image", "");
     if (!value) return;
+    const seq = ++fillSeq;
     let parsed;
     try {
       const { filename, subfolder, type } = parseImageValue(value);
@@ -225,12 +259,16 @@ async function setupPhotoExif(node) {
         `/view?filename=${encodeURIComponent(filename)}` +
         `&subfolder=${encodeURIComponent(subfolder)}&type=${type}`));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      parsed = parseExif(await res.arrayBuffer());
+      // normalizeParsed range-checks what came out of the file: bad GPS is
+      // treated as no-GPS, headings wrap into [0,360), invalid dates drop.
+      parsed = normalizeParsed(parseExif(await res.arrayBuffer()));
     } catch (e) {
+      if (seq !== fillSeq) return;
       console.warn("[SphereLight] EXIF read failed:", e);
       setStatus("⚠ couldn't read the image file");
       return;
     }
+    if (seq !== fillSeq) return;
     // Set through the widget callback so hookSourceWidgets' wrapper fires and
     // any connected sphere node re-renders live.
     const set = (name, v) => {
@@ -245,10 +283,12 @@ async function setupPhotoExif(node) {
       set("longitude", Math.round(parsed.lng * 10000) / 10000);
       try {
         cityLabel = cityStringFor(parsed.lat, parsed.lng, await loadCities());
+        if (seq !== fillSeq) return;
         if (cityLabel) set("city", cityLabel);
       } catch (e) {
         console.warn("[SphereLight] cities.json failed:", e);
       }
+      if (seq !== fillSeq) return;
     }
     if (parsed.heading != null) set("heading", Math.round(parsed.heading * 100) / 100);
     if (parsed.date != null) {

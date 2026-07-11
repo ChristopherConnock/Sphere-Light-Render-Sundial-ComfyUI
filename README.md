@@ -57,8 +57,10 @@ over ~15k population; rebuild it with `python tools/build_cities.py`.
 Every positioning parameter (heading, city, lat/lon, date/time, intensity, and
 Manual's rotation/elevation) can be driven by an upstream node — wire a
 **Primitive** (or any node whose value the browser can read) into the
-corresponding input. A connected input **wins** over the on-node control;
-disconnect it and the widget drives again.
+corresponding input. A connected input **wins** over the on-node control, and
+the control mirrors the driven value so the field always shows what's actually
+used; disconnect it and the widget (still holding the last driven value)
+drives again.
 
 The sphere renders client-side (Three.js), and the browser bakes the resolved
 value into the rendered image *before each run* — so the output matches the driven
