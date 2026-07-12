@@ -79,6 +79,31 @@ Everything below is what this fork changed, in order.
 - Parse-on-pick browser glue: widgets fill from EXIF, a status line reports
   what was found; tags the photo doesn't carry leave widgets untouched.
 
+## 2026-07-11 — Audit hardening
+
+- Nearest-city lookup (timezone borrowing, "near <city>" labels, the Photo
+  node's city fill) now wraps longitude across the antimeridian and scales it
+  by cos(latitude) — coordinates near the date line could previously borrow a
+  timezone from the wrong side of it.
+- One shared WebGL renderer for all sphere-light nodes (each keeps a 2D
+  snapshot of its own render) — browsers cap live WebGL contexts at ~8–16, so
+  workflows with many nodes could lose previews. Three.js now also loads
+  single-flight instead of once per node created in the same tick.
+- Live re-renders from a connected source's widget changes are debounced and
+  scoped to the sphere nodes actually wired to that source (was: an immediate
+  full render of every sphere node per change, forever, even after
+  disconnecting).
+- `onRemoved` / `onResize` chain any previously installed handler instead of
+  clobbering it; reload-time source hooking now rides `onConfigure` (the
+  timeout remains as fallback).
+- Widget reads fall back to the declared default when a value doesn't parse as
+  a finite number, instead of leaking NaN into the light math; pure helpers
+  extracted to `js/widgets.js` with unit tests.
+- Real end-to-end integration test: EXIF bytes → parse → normalize → sun
+  angles → light position, using the README's Penn Park photo values.
+- CI (GitHub Actions) runs the JS suite and the Python check scripts on every
+  push and pull request.
+
 ## Fixes along the way
 
 - Sun bearing is mirrored into the scene frame — heading-driven renders were
@@ -87,9 +112,9 @@ Everything below is what this fork changed, in order.
 
 ## Project structure & tests
 
-- 67 JS unit tests under `tests/` (Node's built-in runner, `npm test`) covering
-  solar math, timezone/DST, geo lookup, EXIF parsing, compass, status, and
-  integration.
+- 76 JS unit tests under `tests/` (Node's built-in runner, `npm test`) covering
+  solar math, timezone/DST, geo lookup, EXIF parsing, compass, status, widget
+  helpers, and integration.
 - Python check scripts in `tools/` (`test_decode.py`, `test_new_nodes.py`,
   `test_photo_exif.py`, `test_comfy_load.py`).
 - Design specs and implementation plans for each feature in `docs/superpowers/`.

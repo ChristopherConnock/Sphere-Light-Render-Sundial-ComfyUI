@@ -19,6 +19,9 @@ are the work of **eric-venti-seeds**.
 - **This fork's contributions** (all changes after `6e40c7a` — see
   [CHANGELOG.md](CHANGELOG.md) for the full list): released under the
   [MIT License](LICENSE), copyright Christopher Connock.
+- The `license` field in `pyproject.toml` points at that MIT LICENSE and, like
+  it, covers this fork's contributions only — any upstream-derived portions
+  remain governed by the status described above.
 
 ## Third-party components
 

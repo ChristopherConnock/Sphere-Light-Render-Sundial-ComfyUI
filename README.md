@@ -57,6 +57,8 @@ so there are no mode toggles:
   `heading`.
 - **🔆 Sphere Light — Sun (Coordinates)** — same, but enter `latitude` /
   `longitude` directly (timezone borrowed from the nearest listed city).
+  Exactly `0, 0` is treated as "not set yet" — for a point in the Gulf of
+  Guinea, nudge either value (e.g. `0.0001, 0`).
 - **📷 Sphere Light — Photo (EXIF)** — upload a photo; its EXIF supplies
   `latitude`/`longitude`, the nearest `city`, `heading` (`GPSImgDirection`),
   and the capture date/time as outputs — wire them into the Sun nodes to light
@@ -95,6 +97,10 @@ means **an open ComfyUI browser tab is required** for driven inputs, and the
 driving value must be one the browser can resolve (a Primitive/static source, not
 a value computed mid-run by another node). A headless/API run, or a value that
 only exists during execution, isn't reflected — use the widgets for those.
+
+The baked render travels inside the workflow itself (the hidden `render_b64`
+widget), so a saved workflow JSON carries roughly 100–400 KB per sphere-light
+node — that's expected, not corruption.
 
 ### From a photo's EXIF
 
