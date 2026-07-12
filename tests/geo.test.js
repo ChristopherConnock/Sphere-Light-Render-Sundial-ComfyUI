@@ -45,3 +45,21 @@ test("nearestCity returns the closest record", () => {
   assert.equal(nearestCity(30.3, -97.7, FIX).regionCode, "TX"); // near Austin, TX
   assert.equal(nearestCity(35.6, 139.7, FIX).city, "Tokyo");    // near Tokyo
 });
+
+test("nearestCity wraps longitude across the antimeridian", () => {
+  const PACIFIC = [
+    { city: "Suva",    lat: -18.14, lng: 178.44,  tz: "Pacific/Fiji" },
+    { city: "Papeete", lat: -17.53, lng: -149.57, tz: "Pacific/Tahiti" },
+  ];
+  // Just EAST of the date line: numerically ~358° of longitude from Suva but
+  // physically ~2°. Naive degree distance would pick Papeete (30° away).
+  assert.equal(nearestCity(-17.0, -179.9, PACIFIC).city, "Suva");
+});
+
+test("nearestCity scales longitude by cos(latitude)", () => {
+  const NORTH = [
+    { city: "SameLatEast", lat: 65.0, lng: 10.0, tz: "X" }, // 10° lng ≈ 4.2° ground at 65°N
+    { city: "DueSouth",    lat: 58.5, lng: 0.0,  tz: "Y" }, // 6.5° lat away
+  ];
+  assert.equal(nearestCity(65.0, 0.0, NORTH).city, "SameLatEast");
+});

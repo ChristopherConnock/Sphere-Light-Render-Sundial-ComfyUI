@@ -38,14 +38,19 @@ export function findCity(query, records) {
   return matches[0];
 }
 
-// Closest record to a lat/lng, by squared degree distance. Used to borrow a
-// timezone for manually-entered coordinates that aren't a listed city.
+// Closest record to a lat/lng, by squared equirectangular distance: longitude
+// deltas wrap across the antimeridian (179.9° vs −179.9° is 0.2° apart, not
+// 359.8°) and are scaled by cos(mean latitude) so a degree of longitude weighs
+// what it actually spans on the ground. Used to borrow a timezone for
+// manually-entered coordinates that aren't a listed city — the wrap matters
+// there most: the borrowed zone can otherwise land a calendar day off.
 export function nearestCity(lat, lng, records) {
   let best = null;
   let bestD = Infinity;
   for (const r of records) {
     const dLat = r.lat - lat;
-    const dLng = r.lng - lng;
+    const dLng = ((((r.lng - lng) % 360) + 540) % 360 - 180) *
+                 Math.cos(((r.lat + lat) / 2) * Math.PI / 180);
     const d = dLat * dLat + dLng * dLng;
     if (d < bestD) {
       bestD = d;
