@@ -7,15 +7,18 @@ import { drawCompass } from "./compass.js";
 // this module's own URL, so it loads wherever ComfyUI serves the extension.
 const THREE_CDN = new URL("./three.min.js", import.meta.url).href;
 
+let _threeLoading = null;
 export function loadThree() {
-  return new Promise((res, rej) => {
-    if (window.THREE) return res();
+  if (window.THREE) return Promise.resolve();
+  // Single-flight: several nodes created in the same tick must share one
+  // <script> load instead of injecting one tag each.
+  return (_threeLoading ??= new Promise((res, rej) => {
     const s = document.createElement("script");
     s.src = THREE_CDN;
     s.onload = res;
     s.onerror = rej;
     document.head.appendChild(s);
-  });
+  }));
 }
 
 export function buildScene() {
@@ -75,6 +78,18 @@ export function buildScene() {
   return { renderer, scene, camera, dirLight, canvas };
 }
 
+// One WebGL renderer/scene shared by ALL sphere-light nodes. Browsers cap
+// live WebGL contexts (~8–16), so per-node renderers stopped rendering once a
+// workflow held enough nodes. Each node renders its own angles into the
+// shared canvas, then copies the pixels to its own 2D snapshot canvas — so
+// every node still displays its own image simultaneously, but only one GL
+// context ever exists (and it lives for the page, so there's nothing to free
+// per node).
+let _shared = null;
+export function sharedScene() {
+  return (_shared ??= buildScene());
+}
+
 export function renderLight(ctx, { az, el, intensity }) {
   const p = lightPosition(az, el);
   ctx.dirLight.position.set(p.x, p.y, p.z);
@@ -106,9 +121,12 @@ export function hookWidgets(node, names, onChange) {
 
 export async function attachPreview(node, getAngles) {
   await loadThree();
-  const ctx = buildScene();
-  node._slCtx = ctx;
-  node._slCanvas = ctx.canvas;
+  const ctx = sharedScene();
+  const snap = document.createElement("canvas");
+  snap.width = 512;
+  snap.height = 512;
+  const snap2d = snap.getContext("2d");
+  node._slCanvas = snap;   // this node's own copy of its last render
   node._slReady = false;
 
   const TOP_WIDGETS_H = () => {
@@ -173,12 +191,9 @@ export async function attachPreview(node, getAngles) {
   node.widgets.push(previewWidget);
 
   node.onRemoved = function () {
-    // dispose() frees GL resources; forceContextLoss() releases the WebGL
-    // context itself (browsers cap ~16), so many nodes don't exhaust them.
-    this._slCtx?.renderer?.dispose();
-    this._slCtx?.renderer?.forceContextLoss?.();
-    this._slCtx    = null;
+    // The GL renderer is shared and stays; only this node's snapshot goes.
     this._slCanvas = null;
+    this._slReady = false;
   };
 
   node.onResize = function (size) {
@@ -189,6 +204,7 @@ export async function attachPreview(node, getAngles) {
 
   const render = () => {
     const b64 = renderLight(ctx, getAngles());
+    snap2d.drawImage(ctx.canvas, 0, 0);   // keep this node's own copy
     node._slReady = true;
     const wb = node.widgets?.find((w) => w.name === "render_b64");
     if (wb) wb.value = b64;
