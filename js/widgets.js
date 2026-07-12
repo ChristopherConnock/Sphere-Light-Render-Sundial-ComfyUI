@@ -16,3 +16,13 @@ export function getStr(node, name, def) {
   const w = node.widgets?.find((w) => w.name === name);
   return w ? String(w.value) : def;
 }
+
+// Whether any of the node's inputs is fed by the source node with id `srcId`.
+// Used to scope live re-renders: when a source widget changes, only the
+// sphere nodes actually wired to it re-render — and a node hooked once but
+// since disconnected triggers nothing.
+export function isLinkedToSource(node, srcId, links) {
+  return (node.inputs || []).some(
+    (inp) => inp.link != null && links?.[inp.link]?.origin_id === srcId
+  );
+}

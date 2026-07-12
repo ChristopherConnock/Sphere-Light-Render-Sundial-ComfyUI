@@ -6,7 +6,7 @@ import { nearestCityLabel } from "./status.js";
 import { attachPreview, hideWidget, hookWidgets } from "./preview.js";
 import { parseExif } from "./exif.js";
 import { parseImageValue, cityStringFor, photoStatus, normalizeParsed } from "./photo.js";
-import { getVal, getStr } from "./widgets.js";
+import { getVal, getStr, isLinkedToSource } from "./widgets.js";
 
 // If a positioning input is connected in the graph, follow the link to its
 // source node and read the driven value client-side (a Primitive or other
@@ -76,7 +76,9 @@ function makeResolvers(node) {
 // the SOURCE's slider (e.g. a Primitive feeding intensity/heading) wouldn't move
 // the preview — it looked dead even though the queued output was correct. Wrap
 // the source node's widget callbacks (once) so changing its value re-renders
-// every sphere-light node live.
+// the sphere-light nodes wired to it. Scoping by live links (not "all sphere
+// nodes") also makes a stale hook inert after a disconnect, and the debounced
+// scheduler keeps a keystroke burst from doing a full render per character.
 function hookSourceWidgets(src) {
   if (!src || src._slSourceHooked || !src.widgets) return;
   src._slSourceHooked = true;
@@ -85,7 +87,10 @@ function hookSourceWidgets(src) {
     w.callback = function (...args) {
       const r = orig ? orig.apply(this, args) : undefined;
       for (const n of app.graph?._nodes || []) {
-        if (typeof n._slRender === "function") { try { n._slRender(); } catch (e) {} }
+        if (typeof n._slScheduleRender !== "function") continue;
+        if (isLinkedToSource(n, src.id, app.graph.links)) {
+          try { n._slScheduleRender(); } catch (e) {}
+        }
       }
       return r;
     };
@@ -147,6 +152,7 @@ async function setupManual(node) {
   };
   const { render, scheduleRender, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
   node._slRender = render;   // queue-time refresh + connection-change re-render
+  node._slScheduleRender = scheduleRender;   // debounced: live source-widget changes
 
   setTimeout(() => {
     hideWidget(node, "render_b64");
@@ -205,6 +211,7 @@ async function setupSun(node, mode) {
 
   const { render, scheduleRender, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
   node._slRender = render;   // queue-time refresh + connection-change re-render
+  node._slScheduleRender = scheduleRender;   // debounced: live source-widget changes
 
   loadCities().then((c) => { cities = c; render(); })
               .catch((e) => console.warn("[SphereLight] cities.json failed:", e));
@@ -331,6 +338,15 @@ app.registerExtension({
       }
     };
     // Existing connections (e.g. after a reload) predate the handler above.
+    // onConfigure is the deterministic signal (it fires when a workflow is
+    // loaded into the node); the deferral lets the whole graph finish
+    // configuring so every link resolves. The timeout stays as a fallback for
+    // paths that never configure (hookSourceWidgets is idempotent).
+    const origConfigure = node.onConfigure;
+    node.onConfigure = function () {
+      origConfigure?.apply(this, arguments);
+      setTimeout(() => hookConnectedSources(node), 0);
+    };
     setTimeout(() => hookConnectedSources(node), 900);
     return setup;
   },
