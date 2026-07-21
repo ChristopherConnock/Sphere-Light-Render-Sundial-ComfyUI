@@ -1,28 +1,16 @@
 import { app } from "../../scripts/app.js";
 import { lightPosition } from "./light.js";
 import { drawCompass } from "./compass.js";
-
 // Vendored locally (was cdnjs) so the node works offline / air-gapped and
-// isn't exposed to a third-party CDN being compromised. Resolved relative to
-// this module's own URL, so it loads wherever ComfyUI serves the extension.
-const THREE_CDN = new URL("./three.min.js", import.meta.url).href;
-
-let _threeLoading = null;
-export function loadThree() {
-  if (window.THREE) return Promise.resolve();
-  // Single-flight: several nodes created in the same tick must share one
-  // <script> load instead of injecting one tag each.
-  return (_threeLoading ??= new Promise((res, rej) => {
-    const s = document.createElement("script");
-    s.src = THREE_CDN;
-    s.onload = res;
-    s.onerror = rej;
-    document.head.appendChild(s);
-  }));
-}
+// isn't exposed to a third-party CDN being compromised. The ES-module build is
+// imported under a module-local namespace — the old UMD bundle assigned
+// `globalThis.THREE`, clobbering (or being clobbered by) any other custom
+// node's Three.js, load-order dependent. ComfyUI auto-imports every .js under
+// WEB_DIRECTORY; for an ES module that's harmless (the module cache dedupes).
+import * as THREE from "./three.module.js";
 
 export function buildScene() {
-  const R = window.THREE;
+  const R = THREE;
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 512;
@@ -120,7 +108,6 @@ export function hookWidgets(node, names, onChange) {
 }
 
 export async function attachPreview(node, getAngles) {
-  await loadThree();
   const ctx = sharedScene();
   const snap = document.createElement("canvas");
   snap.width = 512;

@@ -138,7 +138,7 @@ drives Sun (Coordinates), whose widgets mirror the driven values:
 - This fork's contributions are released under the [MIT License](LICENSE).
 - City data derived from [GeoNames](https://www.geonames.org/)
   ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
-- [Three.js](https://threejs.org/) r128 (MIT) is vendored as `js/three.min.js`.
+- [Three.js](https://threejs.org/) r128 (MIT) is vendored as `js/three.module.js`.
 - The demo photo in the README (`docs/media/penn-soccer-pickup-shadows.jpg`)
   was taken by the repo author — chosen because its EXIF carries GPS
   coordinates, a compass heading, and the capture time, and its low winter sun

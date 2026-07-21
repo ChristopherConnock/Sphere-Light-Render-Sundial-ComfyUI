@@ -25,7 +25,7 @@ are the work of **eric-venti-seeds**.
 
 ## Third-party components
 
-- **[Three.js](https://threejs.org/)** r128, vendored as `js/three.min.js` —
+- **[Three.js](https://threejs.org/)** r128, vendored as `js/three.module.js` —
   MIT License, copyright 2010–2021 Three.js Authors (license header retained
   in the file).
 - **[GeoNames](https://www.geonames.org/)** geographical data (`cities15000`,
