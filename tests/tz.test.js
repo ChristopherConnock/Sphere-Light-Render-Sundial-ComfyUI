@@ -34,3 +34,14 @@ test("DST fall-back morning resolves to correct UTC (EST)", () => {
   const d = zonedWallTimeToUTC(2023, 11, 5, 3, 0, "America/New_York");
   assert.equal(d.getUTCHours(), 8);
 });
+
+test("years 1-99 stay themselves (no legacy 19xx remap)", () => {
+  // Date.UTC(1, ...) means 1901; the node advertises years 1-9999, so year 1
+  // must come out as year 1.
+  const d = zonedWallTimeToUTC(1, 6, 21, 12, 0, "UTC");
+  assert.equal(d.getUTCFullYear(), 1);
+  assert.equal(d.getUTCHours(), 12);
+  const d99 = zonedWallTimeToUTC(99, 1, 15, 6, 30, "UTC");
+  assert.equal(d99.getUTCFullYear(), 99);
+  assert.equal(d99.getUTCMinutes(), 30);
+});
