@@ -6,32 +6,15 @@ import { nearestCityLabel } from "./status.js";
 import { attachPreview, hideWidget, hookWidgets } from "./preview.js";
 import { parseExif } from "./exif.js";
 import { parseImageValue, cityStringFor, photoStatus, normalizeParsed } from "./photo.js";
-import { getVal, getStr, isLinkedToSource } from "./widgets.js";
+import { getVal, getStr, isLinkedToSource, connectedWidgetValue } from "./widgets.js";
 
-// If a positioning input is connected in the graph, follow the link to its
-// source node and read the driven value client-side (a Primitive or other
-// widget-backed source). Returns undefined when the input isn't connected or
-// the value can't be resolved in the browser (e.g. a value computed mid-run by
-// an upstream node — that's the documented unsupported case). A connected input
-// wins over the on-node control; this is what makes params graph-driveable.
+// If a positioning input is connected in the graph, read the driven value
+// client-side (see connectedWidgetValue in widgets.js — resolves in the node's
+// own graph so subgraphs work, and by origin output slot so cross-wired
+// multi-output sources read the right widget). A connected input wins over the
+// on-node control; this is what makes params graph-driveable.
 function connectedInputValue(node, name) {
-  const slot = (node.inputs || []).findIndex((s) => s.name === name);
-  if (slot < 0) return undefined;
-  const inp = node.inputs[slot];
-  if (inp.link == null) return undefined;
-  const link = app.graph.links?.[inp.link];
-  if (!link) return undefined;
-  const origin = app.graph.getNodeById?.(link.origin_id);
-  if (!origin) return undefined;
-  // A PrimitiveNode adopts the target widget's name (older ones keep "value");
-  // other simple sources hold theirs in their only widget. Never fall back to
-  // "the first widget" of a multi-widget source — on the Photo (EXIF) node that
-  // would silently read the image filename for an input with no matching name.
-  const ws = origin.widgets || [];
-  const w = ws.find((x) => x.name === name)
-         || ws.find((x) => x.name === "value")
-         || (ws.length === 1 ? ws[0] : undefined);
-  return w ? w.value : undefined;
+  return connectedWidgetValue(node, name, app.graph);
 }
 
 // While an input is connected, its on-node field mirrors the driven value —
@@ -86,9 +69,12 @@ function hookSourceWidgets(src) {
     const orig = w.callback;
     w.callback = function (...args) {
       const r = orig ? orig.apply(this, args) : undefined;
-      for (const n of app.graph?._nodes || []) {
+      // The sphere nodes wired to this source live in the SAME graph as it
+      // (links never cross a subgraph boundary), so scan src's own graph.
+      const g = src.graph || app.graph;
+      for (const n of g?.nodes || g?._nodes || []) {
         if (typeof n._slScheduleRender !== "function") continue;
-        if (isLinkedToSource(n, src.id, app.graph.links)) {
+        if (isLinkedToSource(n, src.id, g.links)) {
           try { n._slScheduleRender(); } catch (e) {}
         }
       }
@@ -100,10 +86,11 @@ function hookSourceWidgets(src) {
 // Hook the source behind every currently-connected positioning input (used on
 // reload, where connections exist before onConnectionsChange ever fires).
 function hookConnectedSources(node) {
+  const g = node.graph || app.graph;
   for (const inp of node.inputs || []) {
     if (inp.link == null) continue;
-    const link = app.graph.links?.[inp.link];
-    if (link) hookSourceWidgets(app.graph.getNodeById?.(link.origin_id));
+    const link = g?.links?.[inp.link];
+    if (link) hookSourceWidgets(g.getNodeById?.(link.origin_id));
   }
 }
 
@@ -170,12 +157,19 @@ async function setupManual(node) {
 
 async function setupSun(node, mode) {
   let cities = null;
+  let citiesFailed = false;
   let setStatus = () => {};
 
   const { num, str } = makeResolvers(node);
   const getAngles = () => {
     const intensity = num("intensity", 1.5);
-    if (!cities) { setStatus(""); return { az: 0, el: 45, intensity }; }
+    // Until the city dataset arrives the render uses fixed fallback angles —
+    // say so instead of showing a valid-looking sphere with a blank status.
+    if (!cities) {
+      setStatus(citiesFailed ? "⚠ city data failed to load — using fallback light"
+                             : "⏳ loading city data…");
+      return { az: 0, el: 45, intensity };
+    }
     const heading = num("heading", 0);
     node._slHeading = heading;   // preview.js draws the passive compass overlay
     const base = {
@@ -214,7 +208,11 @@ async function setupSun(node, mode) {
   node._slScheduleRender = scheduleRender;   // debounced: live source-widget changes
 
   loadCities().then((c) => { cities = c; render(); })
-              .catch((e) => console.warn("[SphereLight] cities.json failed:", e));
+              .catch((e) => {
+                citiesFailed = true;
+                setStatus("⚠ city data failed to load — using fallback light");
+                console.warn("[SphereLight] cities.json failed:", e);
+              });
 
   const watched = mode === "city"
     ? ["intensity", "city", "year", "month", "day", "hour", "minute", "heading"]
@@ -238,11 +236,28 @@ async function setupSun(node, mode) {
 async function setupPhotoExif(node) {
   let setStatus = () => {};
 
+  // Must mirror the INPUT_TYPES defaults in __init__.py: picking a new photo
+  // resets every metadata widget to its server-declared default first, so a
+  // photo missing a tag shows the default — never the PREVIOUS photo's value
+  // silently feeding connected Sun nodes. Still hand-editable afterwards.
+  const METADATA_DEFAULTS = {
+    latitude: 0, longitude: 0, city: "",
+    year: 2025, month: 6, day: 21, hour: 12, minute: 0, heading: 0,
+  };
+
+  // Set through the widget callback so hookSourceWidgets' wrapper fires and
+  // any connected sphere node re-renders live.
+  const set = (name, v) => {
+    const w = node.widgets?.find((x) => x.name === name);
+    if (!w) return;
+    w.value = v;
+    try { w.callback?.(v, app.canvas, node); } catch (e) {}
+  };
+
   // Fetch the picked photo, parse its EXIF, and bake the values into this
   // node's widgets. The widget names deliberately match the Sun nodes' input
   // names: connectedInputValue() on a sphere node resolves a connection by
-  // looking up the identically named widget here. Tags absent from the file
-  // leave their widgets untouched (hand-editable fallbacks).
+  // looking up the identically named widget here.
   // Two rapid image picks interleave two async fills; the sequence token makes
   // a superseded fill drop out instead of stamping stale values last.
   let fillSeq = 0;
@@ -250,6 +265,9 @@ async function setupPhotoExif(node) {
     const value = getStr(node, "image", "");
     if (!value) return;
     const seq = ++fillSeq;
+    // Reset synchronously (before any await) so two rapid picks apply their
+    // resets in pick order and the seq guard alone decides whose EXIF lands.
+    for (const [name, v] of Object.entries(METADATA_DEFAULTS)) set(name, v);
     let parsed;
     try {
       const { filename, subfolder, type } = parseImageValue(value);
@@ -267,14 +285,6 @@ async function setupPhotoExif(node) {
       return;
     }
     if (seq !== fillSeq) return;
-    // Set through the widget callback so hookSourceWidgets' wrapper fires and
-    // any connected sphere node re-renders live.
-    const set = (name, v) => {
-      const w = node.widgets?.find((x) => x.name === name);
-      if (!w) return;
-      w.value = v;
-      try { w.callback?.(v, app.canvas, node); } catch (e) {}
-    };
     let cityLabel = "";
     if (parsed.lat != null && parsed.lng != null) {
       set("latitude", Math.round(parsed.lat * 10000) / 10000);
@@ -334,7 +344,8 @@ app.registerExtension({
       origOCC?.apply(this, arguments);
       if (node._slRender) setTimeout(() => node._slRender(), 0);
       if (isConnected && type === LiteGraph.INPUT && linkInfo) {
-        hookSourceWidgets(app.graph.getNodeById?.(linkInfo.origin_id));
+        const g = node.graph || app.graph;
+        hookSourceWidgets(g?.getNodeById?.(linkInfo.origin_id));
       }
     };
     // Existing connections (e.g. after a reload) predate the handler above.
