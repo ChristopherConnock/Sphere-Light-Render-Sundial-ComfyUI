@@ -29,7 +29,7 @@ export function parseImageValue(value) {
 // coordinates are treated as no-GPS (clamping would invent a location);
 // headings wrap (365° means 5°); an invalid date is dropped wholesale.
 export function normalizeParsed(parsed) {
-  const out = { lat: null, lng: null, heading: null, date: null };
+  const out = { lat: null, lng: null, heading: null, headingRef: null, date: null };
   if (parsed.lat != null && parsed.lng != null &&
       Math.abs(parsed.lat) <= 90 && Math.abs(parsed.lng) <= 180) {
     out.lat = parsed.lat;
@@ -37,6 +37,7 @@ export function normalizeParsed(parsed) {
   }
   if (parsed.heading != null) {
     out.heading = ((parsed.heading % 360) + 360) % 360;
+    out.headingRef = parsed.headingRef ?? null;
   }
   const d = parsed.date;
   if (d != null &&
@@ -67,8 +68,11 @@ export function photoStatus(parsed, cityLabel) {
   } else {
     parts.push("⚠ no GPS data");
   }
+  // A magnetic heading (GPSImgDirectionRef "M") is off from true north by the
+  // local declination; surface that rather than silently treating it as true.
   parts.push(parsed.heading != null
-    ? `heading ${parsed.heading.toFixed(2)}°`
+    ? `heading ${parsed.heading.toFixed(2)}°` +
+      (parsed.headingRef === "M" ? " (magnetic)" : "")
     : "no heading tag");
   if (parsed.date != null) {
     const d = parsed.date;

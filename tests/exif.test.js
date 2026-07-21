@@ -46,7 +46,17 @@ test("missing tags yield nulls, present ones still parse", () => {
   assert.equal(r.date, null);
   assert.ok(Math.abs(r.heading - 90) < 1e-6);
   const empty = parseTiff(buildTiff({}));
-  assert.deepEqual(empty, { lat: null, lng: null, heading: null, date: null });
+  assert.deepEqual(empty, { lat: null, lng: null, heading: null, headingRef: null, date: null });
+});
+
+test("GPSImgDirectionRef comes out alongside the heading", () => {
+  const magnetic = parseTiff(buildTiff({ heading: 214.5, headingRef: "M" }));
+  assert.equal(magnetic.headingRef, "M");
+  assert.ok(Math.abs(magnetic.heading - 214.5) < 1e-6);
+  const trueNorth = parseTiff(buildTiff({ heading: 214.5, headingRef: "T" }));
+  assert.equal(trueNorth.headingRef, "T");
+  // Ref tag absent (the PARIS fixture has none): null, not a guessed "T".
+  assert.equal(parseTiff(buildTiff(PARIS)).headingRef, null);
 });
 
 test("parseTiff throws on non-TIFF bytes (caller catches)", () => {
@@ -73,7 +83,7 @@ test("parseExif end-to-end on each container", () => {
 });
 
 test("parseExif never throws on junk or truncated input", () => {
-  const empty = { lat: null, lng: null, heading: null, date: null };
+  const empty = { lat: null, lng: null, heading: null, headingRef: null, date: null };
   const truncated = jpegWith(buildTiff(PARIS)).slice(0, 24);
   for (const buf of [
     new ArrayBuffer(0),
@@ -86,7 +96,7 @@ test("parseExif never throws on junk or truncated input", () => {
 });
 
 test("parseExif on EXIF-less containers yields all-null (scanners reach their exits)", () => {
-  const empty = { lat: null, lng: null, heading: null, date: null };
+  const empty = { lat: null, lng: null, heading: null, headingRef: null, date: null };
   // JPEG: SOI + APP0 stub (marker 0xE0, length 8, 6 payload bytes) + EOI, plus
   // 2 trailing pad bytes so the loop's 4-byte lookahead reaches the EOI marker
   // and actually executes the `marker === 0xd9` break (not just runs out of
@@ -129,5 +139,5 @@ test("parseTiff rejects absurd tag counts (MAX_COUNT cap) and parseExif absorbs 
   ]);
   assert.throws(() => parseTiff(tiff), /too large/);
   assert.deepEqual(parseExif(jpegWith(tiff).buffer),
-                   { lat: null, lng: null, heading: null, date: null });
+                   { lat: null, lng: null, heading: null, headingRef: null, date: null });
 });

@@ -43,7 +43,7 @@ test("photoStatus reports everything found", () => {
 });
 
 test("photoStatus flags each gap explicitly", () => {
-  const s = photoStatus({ lat: null, lng: null, heading: null, date: null }, "");
+  const s = photoStatus({ lat: null, lng: null, heading: null, headingRef: null, date: null }, "");
   assert.equal(s, "📷 ⚠ no GPS data · no heading tag · no date/time tag");
 });
 
@@ -52,11 +52,20 @@ test("photoStatus with GPS but no city label still shows coordinates", () => {
   assert.equal(s, "📷 1.50, -3.25 · heading 90.00° · no date/time tag");
 });
 
+test("photoStatus marks a magnetic heading; true north stays unmarked", () => {
+  const base = { lat: null, lng: null, date: null };
+  assert.match(photoStatus({ ...base, heading: 90, headingRef: "M" }, ""),
+               /heading 90\.00° \(magnetic\)/);
+  const t = photoStatus({ ...base, heading: 90, headingRef: "T" }, "");
+  assert.match(t, /heading 90\.00°/);
+  assert.doesNotMatch(t, /magnetic/);
+});
+
 // ---- normalizeParsed -------------------------------------------------------
 
 test("normalizeParsed passes valid values through (wrapping heading into [0,360))", () => {
   const parsed = {
-    lat: 48.858222, lng: 2.2945, heading: 214.5,
+    lat: 48.858222, lng: 2.2945, heading: 214.5, headingRef: null,
     date: { year: 2023, month: 6, day: 21, hour: 14, minute: 30 },
   };
   assert.deepEqual(normalizeParsed(parsed), parsed);
@@ -65,9 +74,17 @@ test("normalizeParsed passes valid values through (wrapping heading into [0,360)
   assert.equal(normalizeParsed({ ...parsed, heading: 360 }).heading, 0);
 });
 
+test("normalizeParsed keeps headingRef only while a heading survives", () => {
+  const base = { lat: null, lng: null, date: null };
+  assert.equal(normalizeParsed({ ...base, heading: 214.5, headingRef: "M" }).headingRef, "M");
+  assert.equal(normalizeParsed({ ...base, heading: 214.5, headingRef: "T" }).headingRef, "T");
+  // No heading -> the ref means nothing, drop it.
+  assert.equal(normalizeParsed({ ...base, heading: null, headingRef: "M" }).headingRef, null);
+});
+
 test("normalizeParsed rejects out-of-range coordinates as no-GPS (both nulled)", () => {
   const base = { lat: 91.2, lng: 2.29, heading: null, date: null };
-  assert.deepEqual(normalizeParsed(base), { lat: null, lng: null, heading: null, date: null });
+  assert.deepEqual(normalizeParsed(base), { lat: null, lng: null, heading: null, headingRef: null, date: null });
   assert.equal(normalizeParsed({ ...base, lat: 48.9, lng: -180.5 }).lat, null);
   assert.equal(normalizeParsed({ ...base, lat: 48.9, lng: -180.5 }).lng, null);
 });
@@ -83,7 +100,7 @@ test("normalizeParsed rejects an invalid date wholesale", () => {
 });
 
 test("normalizeParsed keeps all-null input all-null", () => {
-  const empty = { lat: null, lng: null, heading: null, date: null };
+  const empty = { lat: null, lng: null, heading: null, headingRef: null, date: null };
   assert.deepEqual(normalizeParsed(empty), empty);
 });
 

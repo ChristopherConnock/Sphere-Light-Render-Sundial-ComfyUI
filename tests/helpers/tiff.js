@@ -1,6 +1,7 @@
 // Hand-rolled TIFF/EXIF fixture builder for tests (and the e2e fixture
 // script). Layout: header(8) | IFD0 | GPS IFD | Exif IFD | data area.
 // opts: { lat: [d,m,s], latRef, lng: [d,m,s], lngRef, heading: number,
+//         headingRef: "T" | "M" (GPSImgDirectionRef; omitted when absent),
 //         dateTime: "YYYY:MM:DD HH:MM:SS", littleEndian (default true),
 //         lngDen/headingDen: rational denominator overrides (default 10000;
 //         pass 0 to fixture a corrupt zero-denominator rational) }
@@ -19,6 +20,9 @@ export function buildTiff(opts = {}) {
     gps.push([0x0002, 5, 3, null, opts.lat.flatMap((v) => rational(v))]);
     gps.push([0x0003, 2, 2, ascii(opts.lngRef || "E").concat([0, 0]).slice(0, 4), null]);
     gps.push([0x0004, 5, 3, null, opts.lng.flatMap((v) => rational(v, opts.lngDen ?? 10000))]);
+  }
+  if (opts.headingRef != null) {
+    gps.push([0x0010, 2, 2, ascii(opts.headingRef).concat([0, 0]).slice(0, 4), null]);
   }
   if (opts.heading != null) {
     gps.push([0x0011, 5, 1, null, rational(opts.heading, opts.headingDen ?? 10000)]);

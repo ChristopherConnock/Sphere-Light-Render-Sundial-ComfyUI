@@ -61,13 +61,14 @@ export function dmsToDeg(dms, ref) {
 const IFD0_GPS = 0x8825;
 const IFD0_EXIF = 0x8769;
 const GPS_LAT_REF = 0x0001, GPS_LAT = 0x0002, GPS_LNG_REF = 0x0003, GPS_LNG = 0x0004;
-const GPS_IMG_DIR = 0x0011;
+const GPS_IMG_DIR_REF = 0x0010, GPS_IMG_DIR = 0x0011;
 const EXIF_DATETIME_ORIGINAL = 0x9003;
 
-// Parse a TIFF/EXIF block. Returns { lat, lng, heading, date } — each null
-// when absent (date: {year, month, day, hour, minute}). Throws on malformed
-// input; parseExif() is the catching entry point. Out-of-range offsets throw
-// RangeError from DataView, which serves as the bounds check.
+// Parse a TIFF/EXIF block. Returns { lat, lng, heading, headingRef, date } —
+// each null when absent (date: {year, month, day, hour, minute}; headingRef is
+// GPSImgDirectionRef, "T" true north / "M" magnetic north). Throws on
+// malformed input; parseExif() is the catching entry point. Out-of-range
+// offsets throw RangeError from DataView, which serves as the bounds check.
 export function parseTiff(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const order = dv.getUint16(0);
@@ -76,7 +77,7 @@ export function parseTiff(bytes) {
   if (dv.getUint16(2, le) !== 42) throw new Error("bad TIFF magic");
   const ifd0 = readIfd(dv, dv.getUint32(4, le), le);
 
-  const out = { lat: null, lng: null, heading: null, date: null };
+  const out = { lat: null, lng: null, heading: null, headingRef: null, date: null };
 
   const gpsPtr = ifd0.get(IFD0_GPS);
   if (gpsPtr) {
@@ -95,7 +96,16 @@ export function parseTiff(bytes) {
     const dir = gps.get(GPS_IMG_DIR);
     if (dir) {
       const h = readRationals(dv, dir, le)[0];
-      if (Number.isFinite(h)) out.heading = h;
+      if (Number.isFinite(h)) {
+        out.heading = h;
+        // The ref only means something alongside a heading; anything other
+        // than the two spec values stays null (unknown, not assumed true).
+        const refEntry = gps.get(GPS_IMG_DIR_REF);
+        if (refEntry) {
+          const ref = readAscii(dv, refEntry, le).trim().toUpperCase();
+          if (ref === "T" || ref === "M") out.headingRef = ref;
+        }
+      }
     }
   }
 
@@ -177,10 +187,10 @@ export function findExifPayload(bytes) {
   return null;
 }
 
-// The one entry point: photo file bytes in, { lat, lng, heading, date } out.
-// Never throws — malformed or absent EXIF yields all-null.
+// The one entry point: photo file bytes in, { lat, lng, heading, headingRef,
+// date } out. Never throws — malformed or absent EXIF yields all-null.
 export function parseExif(arrayBuffer) {
-  const empty = { lat: null, lng: null, heading: null, date: null };
+  const empty = { lat: null, lng: null, heading: null, headingRef: null, date: null };
   try {
     const tiff = findExifPayload(new Uint8Array(arrayBuffer));
     return tiff ? parseTiff(tiff) : empty;
