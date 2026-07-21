@@ -119,6 +119,10 @@ Everything below is what this fork changed, in order.
 - Picking a new photo on the Photo (EXIF) node resets all metadata widgets to
   their defaults before the new EXIF lands — a photo missing a tag no longer
   silently keeps the previous photo's GPS/heading/time.
+- A brand-new Photo (EXIF) node parses its initial (default) image, so the
+  photo it displays and the metadata it emits agree from the start. Nodes
+  loaded from a saved workflow (or pasted) are detected via `onConfigure` and
+  keep their serialized, possibly hand-corrected values un-reparsed.
 - `GPSImgDirectionRef` is parsed; a magnetic-north heading is flagged
   "(magnetic)" in the status line instead of being silently treated as true
   north.

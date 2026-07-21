@@ -312,9 +312,7 @@ async function setupPhotoExif(node) {
 
   setTimeout(() => {
     setStatus = addStatus(node);
-    // Parse when the photo changes (upload or picking another file) — NOT at
-    // setup: widget values persist in the workflow, so a reload re-parse
-    // would only clobber hand-corrected values.
+    // Parse when the photo changes (upload or picking another file).
     const w = node.widgets?.find((x) => x.name === "image");
     if (w) {
       const orig = w.callback;
@@ -324,6 +322,14 @@ async function setupPhotoExif(node) {
         return r;
       };
     }
+    // A BRAND-NEW node also parses its initial (default) image, so the photo
+    // it displays and the metadata it emits agree from the start. A node
+    // materialized from a saved workflow or paste got onConfigure (see the
+    // extension registration) — its widgets carry serialized, possibly
+    // hand-corrected values a re-parse would clobber, so it is skipped.
+    // Configure fires synchronously right after construction, well before
+    // this 100 ms timer, so the flag is settled by now.
+    if (!node._slConfigured) fill();
   }, 100);
 }
 
@@ -353,8 +359,12 @@ app.registerExtension({
     // loaded into the node); the deferral lets the whole graph finish
     // configuring so every link resolves. The timeout stays as a fallback for
     // paths that never configure (hookSourceWidgets is idempotent).
+    // The flag also distinguishes a loaded/pasted node (serialized widget
+    // values, possibly hand-corrected) from a brand-new one — setupPhotoExif
+    // parses the initial image only when it never fires.
     const origConfigure = node.onConfigure;
     node.onConfigure = function () {
+      this._slConfigured = true;
       origConfigure?.apply(this, arguments);
       setTimeout(() => hookConnectedSources(node), 0);
     };
