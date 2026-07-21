@@ -104,6 +104,31 @@ Everything below is what this fork changed, in order.
 - CI (GitHub Actions) runs the JS suite and the Python check scripts on every
   push and pull request.
 
+## 2026-07-21 — Second audit round
+
+- Graph-driven inputs resolve links in the node's **own** graph (subgraphs get
+  their own `LGraph` with local link/node ids — root-graph lookups could read
+  an unrelated link or fall back to a stale widget), and resolve the origin
+  widget via the wired output slot's name first, so a cross-wired multi-output
+  source (e.g. Photo EXIF `latitude` → `longitude`) reads the value the graph
+  actually carries. Resolver extracted to `js/widgets.js` with unit tests.
+- Three.js swapped from the UMD bundle (which assigned `globalThis.THREE`,
+  clobbering — or being clobbered by — other custom nodes' Three.js, load-order
+  dependent) to the r128 ES-module build, imported module-locally
+  (`js/three.module.js`); the script-tag loader is gone.
+- Picking a new photo on the Photo (EXIF) node resets all metadata widgets to
+  their defaults before the new EXIF lands — a photo missing a tag no longer
+  silently keeps the previous photo's GPS/heading/time.
+- `GPSImgDirectionRef` is parsed; a magnetic-north heading is flagged
+  "(magnetic)" in the status line instead of being silently treated as true
+  north.
+- Sun nodes' status line shows "loading city data…" / "city data failed to
+  load" while renders use fallback angles, instead of a blank line.
+- Wall-time conversion no longer remaps years 1–99 to 1901–1999
+  (`Date.UTC` legacy behavior; the nodes advertise years 1–9999).
+- `MAX_IMAGE_SIDE` tightened 8192 → 2048 (the browser renders 512²; a 8192²
+  decode is ~192 MiB — a decompression bomb, not a legitimate render).
+
 ## Fixes along the way
 
 - Sun bearing is mirrored into the scene frame — heading-driven renders were
@@ -112,7 +137,7 @@ Everything below is what this fork changed, in order.
 
 ## Project structure & tests
 
-- 76 JS unit tests under `tests/` (Node's built-in runner, `npm test`) covering
+- 85 JS unit tests under `tests/` (Node's built-in runner, `npm test`) covering
   solar math, timezone/DST, geo lookup, EXIF parsing, compass, status, widget
   helpers, and integration.
 - Python check scripts in `tools/` (`test_decode.py`, `test_new_nodes.py`,
@@ -126,5 +151,5 @@ Everything below is what this fork changed, in order.
 - City data derived from [GeoNames](https://www.geonames.org/) (`cities15000`,
   `admin1CodesASCII`, `countryInfo`), licensed
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- [Three.js](https://threejs.org/) r128 (MIT), vendored as `js/three.min.js`
+- [Three.js](https://threejs.org/) r128 (MIT), vendored as `js/three.module.js`
   with its license header intact.

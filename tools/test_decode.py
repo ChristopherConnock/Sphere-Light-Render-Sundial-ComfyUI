@@ -36,4 +36,13 @@ uri = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 t2 = mod.decode_render_b64(uri)
 assert tuple(t2.shape) == (1, 1024, 1024, 3), t2.shape
 
+# The browser only ever renders 512x512; anything over MAX_IMAGE_SIDE (2048)
+# is a decompression bomb, not a legitimate render -> gray fallback, not decoded.
+buf = io.BytesIO()
+Image.new("RGB", (3000, 10), (255, 0, 0)).save(buf, format="PNG")
+uri = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+t3 = mod.decode_render_b64(uri)
+px = t3.a[0, 0, 0]
+assert abs(float(px[0]) - 138 / 255) < 1e-3, f"expected gray fallback, got pixel {px}"
+
 print("test_decode: OK")

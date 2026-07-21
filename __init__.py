@@ -8,7 +8,7 @@ import folder_paths
 # therefore untrusted) workflow. These bound how much work a malicious or
 # malformed workflow can make the server do before the try/except catches it.
 MAX_B64_CHARS  = 16 * 1024 * 1024   # a legit 1024^2 PNG data-URI is well under this
-MAX_IMAGE_SIDE = 8192               # reject absurd dimensions (decompression-bomb defence)
+MAX_IMAGE_SIDE = 2048               # the browser renders 512^2; anything larger is a decompression bomb
 TARGET_SIZE    = 1024
 FALLBACK_GRAY  = (138, 138, 138)    # matches the JS clear color 0x8a8a8a
 
